@@ -31,9 +31,9 @@ const ClientPortal = () => {
   ];
 
   const messages = [
-    { id: 1, from: 'Attorney Rozsa', subject: 'Document Review Complete', date: '2024-01-15', unread: true },
+    { id: 1, from: 'Attorney Rozsa Gyene', subject: 'Document Review Complete', date: '2024-01-15', unread: true },
     { id: 2, from: 'Legal Assistant', subject: 'Appointment Reminder', date: '2024-01-12', unread: false },
-    { id: 3, from: 'Attorney Rozsa', subject: 'Trust Funding Instructions', date: '2024-01-10', unread: false }
+    { id: 3, from: 'Attorney Rozsa Gyene', subject: 'Trust Funding Instructions', date: '2024-01-10', unread: false }
   ];
 
   const handleLogin = (e) => {
@@ -78,7 +78,10 @@ const ClientPortal = () => {
             {isSignup ? 'Create Your Account' : 'Client Portal Access'}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Rozsa Gyene Law - Estate Planning & Probate
+            Law Offices of Rozsa Gyene
+          </p>
+          <p className="text-center text-xs text-gray-500">
+            Estate Planning & Probate
           </p>
         </div>
         
@@ -284,7 +287,7 @@ const ClientPortal = () => {
             <Shield className="h-8 w-8 mr-3" />
             <div>
               <h1 className="text-xl font-bold">Client Portal</h1>
-              <p className="text-sm text-blue-200">Rozsa Gyene Law</p>
+              <p className="text-sm text-blue-200">Law Offices of Rozsa Gyene</p>
             </div>
           </div>
           
@@ -416,7 +419,7 @@ const ClientPortal = () => {
                       <MessageSquare className="h-5 w-5 text-blue-500" />
                     </div>
                     <div className="ml-3">
-                      <p className="text-sm text-gray-900">New message from Attorney Rozsa</p>
+                      <p className="text-sm text-gray-900">New message from Attorney Rozsa Gyene</p>
                       <p className="text-sm text-gray-500">2 days ago</p>
                     </div>
                   </div>
@@ -632,6 +635,17 @@ const ClientPortal = () => {
             </div>
           </div>
         )}
+      </div>
+      
+      {/* Footer */}
+      <div className="lg:ml-64 p-4 lg:p-8">
+        <div className="mt-8 pt-8 border-t border-gray-200">
+          <div className="text-center text-sm text-gray-600">
+            <p className="font-medium">Law Offices of Rozsa Gyene</p>
+            <p>450 N Brand Blvd. Suite 600, Glendale, CA 91203</p>
+            <p>Phone: (818) 291-6217 | Email: rozsagyenelaw@yahoo.com</p>
+          </div>
+        </div>
       </div>
     </div>
   );
