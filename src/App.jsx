@@ -1,44 +1,223 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard } from 'lucide-react';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  addDoc,
+  orderBy,
+  serverTimestamp 
+} from 'firebase/firestore';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  listAll 
+} from 'firebase/storage';
+import { auth, db, storage } from './firebase';
+import StripePayment from './components/StripePayment';
 
 const ClientPortal = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSignup, setIsSignup] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [userDocuments, setUserDocuments] = useState([]);
+  const [userMatters, setUserMatters] = useState([]);
+  const [userMessages, setUserMessages] = useState([]);
 
-  // Mock data for demonstration
-  const matters = [
-    { id: 1, title: 'Living Trust - Smith Family', type: 'Estate Planning', status: 'In Progress', lastUpdate: '2024-01-15' },
-    { id: 2, title: 'Will Amendment - John Doe', type: 'Estate Planning', status: 'Review Required', lastUpdate: '2024-01-10' },
-    { id: 3, title: 'Trust Administration - Johnson Estate', type: 'Trust Administration', status: 'Active', lastUpdate: '2024-01-12' }
-  ];
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        // Load user data
+        await loadUserData(user.uid);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
 
-  const documents = [
-    { id: 1, name: 'Living Trust Draft.pdf', status: 'Review Required', uploadDate: '2024-01-14', size: '2.4 MB' },
-    { id: 2, name: 'Asset List.xlsx', status: 'Approved', uploadDate: '2024-01-10', size: '156 KB' },
-    { id: 3, name: 'Property Deed.pdf', status: 'Filed', uploadDate: '2024-01-05', size: '4.2 MB' }
-  ];
+    return unsubscribe;
+  }, []);
 
-  const messages = [
-    { id: 1, from: 'Attorney Rozsa Gyene', subject: 'Document Review Complete', date: '2024-01-15', unread: true },
-    { id: 2, from: 'Legal Assistant', subject: 'Appointment Reminder', date: '2024-01-12', unread: false },
-    { id: 3, from: 'Attorney Rozsa Gyene', subject: 'Trust Funding Instructions', date: '2024-01-10', unread: false }
-  ];
+  // Load user data from Firestore
+  const loadUserData = async (userId) => {
+    try {
+      // Load user's matters
+      const mattersQuery = query(
+        collection(db, 'matters'),
+        where('clientId', '==', userId),
+        orderBy('createdAt', 'desc')
+      );
+      const mattersSnapshot = await getDocs(mattersQuery);
+      const matters = mattersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUserMatters(matters);
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
+      // Load user's documents
+      const documentsQuery = query(
+        collection(db, 'documents'),
+        where('clientId', '==', userId),
+        orderBy('uploadDate', 'desc')
+      );
+      const documentsSnapshot = await getDocs(documentsQuery);
+      const documents = documentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUserDocuments(documents);
+
+      // Load user's messages
+      const messagesQuery = query(
+        collection(db, 'messages'),
+        where('clientId', '==', userId),
+        orderBy('date', 'desc')
+      );
+      const messagesSnapshot = await getDocs(messagesQuery);
+      const messages = messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUserMessages(messages);
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
   };
 
-  const handleSignup = () => {
-    setIsLoggedIn(true);
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setError('');
+    
+    const formData = new FormData(e.target);
+    const email = formData.get('email');
+    const password = formData.get('password');
+    const confirmPassword = formData.get('confirmPassword');
+    const firstName = formData.get('firstName');
+    const lastName = formData.get('lastName');
+    const phone = formData.get('phone');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        firstName,
+        lastName,
+        email,
+        phone,
+        createdAt: serverTimestamp(),
+        role: 'client'
+      });
+
+      // Create initial matter for new client
+      await addDoc(collection(db, 'matters'), {
+        clientId: user.uid,
+        title: `Estate Planning - ${firstName} ${lastName}`,
+        type: 'Estate Planning',
+        status: 'Initial Consultation',
+        createdAt: serverTimestamp(),
+        lastUpdate: serverTimestamp()
+      });
+
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setActiveTab('dashboard');
-    setSidebarOpen(false);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    
+    const formData = new FormData(e.target);
+    const email = formData.get('email');
+    const password = formData.get('password');
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      setError('Invalid email or password');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setActiveTab('dashboard');
+      setSidebarOpen(false);
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+
+    try {
+      setUploadProgress(10);
+      
+      // Create a reference to the file in Firebase Storage
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${file.name}`;
+      const storageRef = ref(storage, `documents/${user.uid}/${fileName}`);
+      
+      // Upload the file
+      setUploadProgress(50);
+      const snapshot = await uploadBytes(storageRef, file);
+      
+      // Get the download URL
+      setUploadProgress(75);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // Save document metadata to Firestore
+      await addDoc(collection(db, 'documents'), {
+        clientId: user.uid,
+        name: file.name,
+        fileName: fileName,
+        url: downloadURL,
+        size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+        status: 'Uploaded',
+        uploadDate: serverTimestamp(),
+        type: file.type
+      });
+      
+      setUploadProgress(100);
+      
+      // Reload documents
+      await loadUserData(user.uid);
+      
+      // Reset progress after a delay
+      setTimeout(() => setUploadProgress(0), 2000);
+      
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setError('Error uploading file');
+      setUploadProgress(0);
+    }
   };
 
   const statusColor = (status) => {
@@ -46,8 +225,10 @@ const ClientPortal = () => {
       case 'Active':
       case 'Approved':
       case 'Filed':
+      case 'Uploaded':
         return 'text-green-600 bg-green-100';
       case 'In Progress':
+      case 'Initial Consultation':
         return 'text-blue-600 bg-blue-100';
       case 'Review Required':
         return 'text-orange-600 bg-orange-100';
@@ -55,6 +236,17 @@ const ClientPortal = () => {
         return 'text-gray-600 bg-gray-100';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-12 w-12 text-blue-900 animate-pulse mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const LoginForm = () => (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -75,8 +267,14 @@ const ClientPortal = () => {
         </div>
         
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              {error}
+            </div>
+          )}
+          
           {!isSignup ? (
-            <div className="space-y-6">
+            <form className="space-y-6" onSubmit={handleLogin}>
               <div>
                 <label htmlFor="email-address" className="block text-sm font-medium text-gray-700">
                   Email address
@@ -132,7 +330,7 @@ const ClientPortal = () => {
 
               <div>
                 <button
-                  onClick={handleLogin}
+                  type="submit"
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Sign in
@@ -143,15 +341,18 @@ const ClientPortal = () => {
                 <span className="text-sm text-gray-600">Don't have an account? </span>
                 <button
                   type="button"
-                  onClick={() => setIsSignup(true)}
+                  onClick={() => {
+                    setIsSignup(true);
+                    setError('');
+                  }}
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
                   Sign up
                 </button>
               </div>
-            </div>
+            </form>
           ) : (
-            <div className="space-y-6">
+            <form className="space-y-6" onSubmit={handleSignup}>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
@@ -229,7 +430,7 @@ const ClientPortal = () => {
                     type="password"
                     required
                     className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Password"
+                    placeholder="Password (minimum 6 characters)"
                   />
                 </div>
               </div>
@@ -252,7 +453,7 @@ const ClientPortal = () => {
 
               <div>
                 <button
-                  onClick={handleSignup}
+                  type="submit"
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Create Account
@@ -263,13 +464,16 @@ const ClientPortal = () => {
                 <span className="text-sm text-gray-600">Already have an account? </span>
                 <button
                   type="button"
-                  onClick={() => setIsSignup(false)}
+                  onClick={() => {
+                    setIsSignup(false);
+                    setError('');
+                  }}
                   className="font-medium text-blue-600 hover:text-blue-500"
                 >
                   Sign in
                 </button>
               </div>
-            </div>
+            </form>
           )}
         </div>
       </div>
@@ -305,7 +509,8 @@ const ClientPortal = () => {
               { id: 'matters', icon: Folder, label: 'My Matters' },
               { id: 'documents', icon: FileText, label: 'Documents' },
               { id: 'messages', icon: MessageSquare, label: 'Messages' },
-              { id: 'billing', icon: DollarSign, label: 'Billing' },
+              { id: 'appointments', icon: Calendar, label: 'Appointments' },
+              { id: 'billing', icon: CreditCard, label: 'Billing' },
               { id: 'profile', icon: User, label: 'Profile' },
             ].map((item) => (
               <button
@@ -353,7 +558,7 @@ const ClientPortal = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Active Matters</p>
-                    <p className="text-2xl font-semibold text-gray-900">3</p>
+                    <p className="text-2xl font-semibold text-gray-900">{userMatters.length}</p>
                   </div>
                 </div>
               </div>
@@ -361,11 +566,11 @@ const ClientPortal = () => {
               <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 bg-orange-100 rounded-lg p-3">
-                    <Clock className="h-6 w-6 text-orange-600" />
+                    <FileText className="h-6 w-6 text-orange-600" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Pending Tasks</p>
-                    <p className="text-2xl font-semibold text-gray-900">2</p>
+                    <p className="text-sm font-medium text-gray-600">Documents</p>
+                    <p className="text-2xl font-semibold text-gray-900">{userDocuments.length}</p>
                   </div>
                 </div>
               </div>
@@ -377,7 +582,9 @@ const ClientPortal = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-600">Unread Messages</p>
-                    <p className="text-2xl font-semibold text-gray-900">1</p>
+                    <p className="text-2xl font-semibold text-gray-900">
+                      {userMessages.filter(m => m.unread).length}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -402,35 +609,22 @@ const ClientPortal = () => {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <AlertCircle className="h-5 w-5 text-orange-500" />
+                  {userDocuments.slice(0, 3).map((doc) => (
+                    <div key={doc.id} className="flex items-center">
+                      <div className="flex-shrink-0">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-gray-900">Document uploaded: {doc.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">Document review required for Living Trust</p>
-                      <p className="text-sm text-gray-500">2 hours ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">Property deed uploaded successfully</p>
-                      <p className="text-sm text-gray-500">1 day ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <MessageSquare className="h-5 w-5 text-blue-500" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">New message from Attorney Rozsa Gyene</p>
-                      <p className="text-sm text-gray-500">2 days ago</p>
-                    </div>
-                  </div>
+                  ))}
+                  {userDocuments.length === 0 && (
+                    <p className="text-sm text-gray-500">No recent activity</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -451,7 +645,7 @@ const ClientPortal = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {matters.map((matter) => (
+                  {userMatters.map((matter) => (
                     <tr key={matter.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{matter.title}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{matter.type}</td>
@@ -460,9 +654,18 @@ const ClientPortal = () => {
                           {matter.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{matter.lastUpdate}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {matter.lastUpdate?.toDate ? matter.lastUpdate.toDate().toLocaleDateString() : 'N/A'}
+                      </td>
                     </tr>
                   ))}
+                  {userMatters.length === 0 && (
+                    <tr>
+                      <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                        No matters found
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -480,15 +683,25 @@ const ClientPortal = () => {
                   type="file"
                   className="hidden"
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                      alert(`Selected file: ${file.name}\n\nNote: This is a demo. In a real application, this would upload the file to your secure server.`);
-                    }
-                  }}
+                  onChange={handleFileUpload}
                 />
               </label>
             </div>
+            
+            {uploadProgress > 0 && (
+              <div className="mb-4 bg-blue-50 rounded-lg p-4">
+                <div className="flex justify-between text-sm text-blue-700 mb-2">
+                  <span>Uploading...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
             
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
@@ -502,7 +715,7 @@ const ClientPortal = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {documents.map((doc) => (
+                  {userDocuments.map((doc) => (
                     <tr key={doc.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{doc.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -510,15 +723,29 @@ const ClientPortal = () => {
                           {doc.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.uploadDate}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'N/A'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.size}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <button className="text-blue-600 hover:text-blue-900">
+                        <a 
+                          href={doc.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-900"
+                        >
                           <Download className="h-4 w-4" />
-                        </button>
+                        </a>
                       </td>
                     </tr>
                   ))}
+                  {userDocuments.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
+                        No documents uploaded yet
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -530,7 +757,7 @@ const ClientPortal = () => {
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
             <div className="bg-white shadow rounded-lg">
               <div className="divide-y divide-gray-200">
-                {messages.map((message) => (
+                {userMessages.map((message) => (
                   <div key={message.id} className={`p-6 hover:bg-gray-50 ${message.unread ? 'bg-blue-50' : ''}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
@@ -541,12 +768,34 @@ const ClientPortal = () => {
                           )}
                         </div>
                         <p className="text-sm text-gray-900 mt-1">{message.subject}</p>
-                        <p className="text-sm text-gray-500 mt-1">{message.date}</p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {message.date?.toDate ? message.date.toDate().toLocaleDateString() : 'N/A'}
+                        </p>
                       </div>
                       <MessageSquare className="h-5 w-5 text-gray-400" />
                     </div>
                   </div>
                 ))}
+                {userMessages.length === 0 && (
+                  <div className="p-6 text-center text-sm text-gray-500">
+                    No messages yet
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'appointments' && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Appointments</h2>
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="text-center">
+                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Appointment scheduling coming soon!</p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Please call (818) 291-6217 to schedule an appointment
+                </p>
               </div>
             </div>
           </div>
@@ -558,37 +807,25 @@ const ClientPortal = () => {
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Current Balance</h3>
-                <p className="text-3xl font-bold text-gray-900">$0.00</p>
-                <p className="text-sm text-gray-500 mt-2">All payments are up to date</p>
-                <button className="mt-4 w-full px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
-                  Make a Payment
-                </button>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Make a Payment</h3>
+                <StripePayment 
+                  user={user}
+                  onSuccess={(amount) => {
+                    // Reload user data to update payment history
+                    loadUserData(user.uid);
+                  }}
+                />
               </div>
               
               <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Methods</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment History</h3>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-center">
-                      <div className="h-8 w-12 bg-gray-200 rounded flex items-center justify-center text-xs font-medium">
-                        VISA
-                      </div>
-                      <span className="ml-3 text-sm text-gray-900">•••• 4242</span>
-                    </div>
-                    <button className="text-sm text-blue-600 hover:text-blue-800">Edit</button>
+                  {/* This would show actual payment history from Firestore */}
+                  <div className="text-center py-8">
+                    <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">No payment history yet</p>
                   </div>
                 </div>
-                <button className="mt-3 text-sm text-blue-600 hover:text-blue-800">+ Add payment method</button>
-              </div>
-            </div>
-            
-            <div className="mt-6 bg-white shadow rounded-lg">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Transaction History</h3>
-              </div>
-              <div className="p-6">
-                <p className="text-sm text-gray-500">No transactions to display</p>
               </div>
             </div>
           </div>
@@ -601,39 +838,15 @@ const ClientPortal = () => {
             <div className="bg-white shadow rounded-lg">
               <div className="p-6 space-y-6">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h3>
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">First Name</label>
-                      <input
-                        type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="John"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Last Name</label>
-                      <input
-                        type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="Smith"
-                      />
-                    </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <input
-                        type="email"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="john.smith@example.com"
-                      />
+                      <p className="mt-1 text-sm text-gray-900">{user?.email}</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Phone</label>
-                      <input
-                        type="tel"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="(555) 123-4567"
-                      />
+                      <label className="block text-sm font-medium text-gray-700">User ID</label>
+                      <p className="mt-1 text-sm text-gray-900">{user?.uid}</p>
                     </div>
                   </div>
                 </div>
@@ -642,12 +855,6 @@ const ClientPortal = () => {
                   <h3 className="text-lg font-medium text-gray-900 mb-4">Security</h3>
                   <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
                     Change Password
-                  </button>
-                </div>
-                
-                <div className="pt-4">
-                  <button className="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
-                    Save Changes
                   </button>
                 </div>
               </div>
@@ -669,7 +876,7 @@ const ClientPortal = () => {
     </div>
   );
 
-  return isLoggedIn ? <Dashboard /> : <LoginForm />;
+  return user ? <Dashboard /> : <LoginForm />;
 };
 
 export default ClientPortal;
