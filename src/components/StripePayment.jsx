@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { CreditCard, DollarSign, Check, AlertCircle } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, STRIPE_PUBLISHABLE_KEY } from '../firebase';
 
-// Initialize Stripe - Using the live key directly for now
-// In production, this should come from environment variables
-const stripePromise = loadStripe('pk_live_51RQxRiLLy2lrya6t1VUp5Zl0kOvs0TprmtQMPO4uxrTimy7RqqX9XFyMzMMelV7jDOSGTrY29Lne4nLKiOINxtRr00Bd3kmxBb');
+// Initialize Stripe with the key from firebase.js
+const stripePromise = loadStripe(STRIPE_PUBLISHABLE_KEY);
 
 const StripePayment = ({ user, amount, description, onSuccess }) => {
   const [loading, setLoading] = useState(false);
