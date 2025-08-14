@@ -2,12 +2,62 @@ import React, { useState } from 'react';
 
 const ClientPortal = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
 
   if (!isLoggedIn) {
     return (
       <div style={{ padding: '40px', maxWidth: '400px', margin: '0 auto' }}>
         <h1>Law Offices of Rozsa Gyene</h1>
-        <h2>Client Portal Login</h2>
+        <h2>{isSignup ? 'Create Account' : 'Client Portal Login'}</h2>
+        
+        {isSignup && (
+          <>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px' }}>First Name</label>
+              <input 
+                type="text"
+                placeholder="Enter your first name"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontSize: '16px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px' }}>Last Name</label>
+              <input 
+                type="text"
+                placeholder="Enter your last name"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontSize: '16px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px' }}>Phone Number</label>
+              <input 
+                type="tel"
+                placeholder="Enter your phone number"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontSize: '16px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
+          </>
+        )}
         
         <div style={{ marginBottom: '20px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>Email</label>
@@ -39,6 +89,23 @@ const ClientPortal = () => {
           />
         </div>
         
+        {isSignup && (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>Confirm Password</label>
+            <input 
+              type="password"
+              placeholder="Confirm your password"
+              style={{
+                width: '100%',
+                padding: '10px',
+                fontSize: '16px',
+                border: '1px solid #ccc',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+        )}
+        
         <button 
           onClick={() => setIsLoggedIn(true)}
           style={{
@@ -52,8 +119,44 @@ const ClientPortal = () => {
             cursor: 'pointer'
           }}
         >
-          Sign In
+          {isSignup ? 'Create Account' : 'Sign In'}
         </button>
+        
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+          {isSignup ? (
+            <>
+              <span>Already have an account? </span>
+              <button 
+                onClick={() => setIsSignup(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#1e3a8a',
+                  textDecoration: 'underline',
+                  cursor: 'pointer'
+                }}
+              >
+                Sign In
+              </button>
+            </>
+          ) : (
+            <>
+              <span>Don't have an account? </span>
+              <button 
+                onClick={() => setIsSignup(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#1e3a8a',
+                  textDecoration: 'underline',
+                  cursor: 'pointer'
+                }}
+              >
+                Sign Up
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
