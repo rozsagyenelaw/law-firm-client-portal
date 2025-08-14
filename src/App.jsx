@@ -473,10 +473,21 @@ const ClientPortal = () => {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
-              <button className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
+              <label className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors cursor-pointer">
                 <Upload className="h-4 w-4 mr-2" />
                 Upload Document
-              </button>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      alert(`Selected file: ${file.name}\n\nNote: This is a demo. In a real application, this would upload the file to your secure server.`);
+                    }
+                  }}
+                />
+              </label>
             </div>
             
             <div className="bg-white shadow rounded-lg overflow-hidden">
