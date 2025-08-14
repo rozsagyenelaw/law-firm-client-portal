@@ -1,656 +1,656 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X } from 'lucide-react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, Check, X, ChevronRight, Menu, Bell, Plus, Search, Calendar, Briefcase, Users, FileCheck } from 'lucide-react';
 
 const ClientPortal = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [signupData, setSignupData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: ''
+  const [signupData, setSignupData] = useState({ 
+    fullName: '', 
+    email: '', 
+    password: '', 
+    confirmPassword: '',
+    phone: ''
   });
   const [isSignup, setIsSignup] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedMatter, setSelectedMatter] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [message, setMessage] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState([
+    { id: 1, text: 'Your trust documents are ready for review', time: '2 hours ago', unread: true },
+    { id: 2, text: 'Payment received - Thank you!', time: '1 day ago', unread: false }
+  ]);
 
-  // Mock data for demonstration
-  const matters = [
-    { id: 1, title: 'Living Trust - Smith Family', type: 'Estate Planning', status: 'In Progress', lastUpdate: '2024-01-15' },
-    { id: 2, title: 'Will Amendment - John Doe', type: 'Estate Planning', status: 'Review Required', lastUpdate: '2024-01-10' },
-    { id: 3, title: 'Trust Administration - Johnson Estate', type: 'Trust Administration', status: 'Active', lastUpdate: '2024-01-12' }
-  ];
+  // Mock user data
+  const [userData, setUserData] = useState({
+    name: 'John Smith',
+    email: 'john.smith@email.com',
+    matters: [
+      {
+        id: 1,
+        type: 'Living Trust',
+        name: 'Smith Family Trust',
+        status: 'In Progress',
+        lastUpdate: '2025-08-10',
+        documents: [
+          { name: 'Draft Trust Agreement', date: '2025-08-08', status: 'Review Required' },
+          { name: 'Asset Schedule', date: '2025-08-05', status: 'Completed' }
+        ],
+        tasks: [
+          { name: 'Review trust draft', due: '2025-08-16', completed: false },
+          { name: 'Provide bank account information', due: '2025-08-18', completed: false }
+        ]
+      },
+      {
+        id: 2,
+        type: 'Probate',
+        name: 'Estate of Mary Smith',
+        status: 'Active',
+        lastUpdate: '2025-08-12',
+        documents: [
+          { name: 'Petition for Probate', date: '2025-08-01', status: 'Filed' },
+          { name: 'Letters of Administration', date: '2025-08-10', status: 'Issued' }
+        ],
+        tasks: [
+          { name: 'Inventory assets', due: '2025-08-20', completed: false }
+        ]
+      }
+    ],
+    messages: [
+      {
+        id: 1,
+        from: 'Rozsa Gyene',
+        subject: 'Trust Draft Ready for Review',
+        date: '2025-08-10',
+        content: 'Hi John, I\'ve completed the initial draft of your trust. Please review and let me know if you have any questions.',
+        unread: true
+      }
+    ]
+  });
 
-  const documents = [
-    { id: 1, name: 'Living Trust Draft.pdf', status: 'Review Required', uploadDate: '2024-01-14', size: '2.4 MB' },
-    { id: 2, name: 'Asset List.xlsx', status: 'Approved', uploadDate: '2024-01-10', size: '156 KB' },
-    { id: 3, name: 'Property Deed.pdf', status: 'Filed', uploadDate: '2024-01-05', size: '4.2 MB' }
-  ];
-
-  const messages = [
-    { id: 1, from: 'Attorney Rozsa Gyene', subject: 'Document Review Complete', date: '2024-01-15', unread: true },
-    { id: 2, from: 'Legal Assistant', subject: 'Appointment Reminder', date: '2024-01-12', unread: false },
-    { id: 3, from: 'Attorney Rozsa Gyene', subject: 'Trust Funding Instructions', date: '2024-01-10', unread: false }
-  ];
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    setIsLoggedIn(true);
-  };
-
-  const handleSignup = (e) => {
-    e.preventDefault();
-    setIsLoggedIn(true);
-  };
-
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setActiveTab('dashboard');
-    setSidebarOpen(false);
-  };
-
-  const statusColor = (status) => {
-    switch (status) {
-      case 'Active':
-      case 'Approved':
-      case 'Filed':
-        return 'text-green-600 bg-green-100';
-      case 'In Progress':
-        return 'text-blue-600 bg-blue-100';
-      case 'Review Required':
-        return 'text-orange-600 bg-orange-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
+  const handleLogin = () => {
+    if (loginData.email && loginData.password) {
+      setIsLoggedIn(true);
+      setActiveTab('dashboard');
     }
   };
 
-  const LoginForm = () => (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <div className="flex justify-center">
-            <Shield className="h-12 w-12 text-blue-900" />
+  const handleSignup = () => {
+    if (signupData.password !== signupData.confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
+    if (signupData.fullName && signupData.email && signupData.password) {
+      setIsLoggedIn(true);
+      setActiveTab('dashboard');
+      setUserData({
+        ...userData,
+        name: signupData.fullName,
+        email: signupData.email,
+        matters: []
+      });
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setUploadedFile(file);
+      // In real app, would upload to server
+      alert(`File "${file.name}" uploaded successfully!`);
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (message.trim()) {
+      // In real app, would send to server
+      alert('Message sent to your attorney!');
+      setMessage('');
+    }
+  };
+
+  const LoginScreen = () => (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Rozsa Gyene Law</h1>
+            <p className="text-gray-600 mt-2">Secure Client Portal</p>
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            {isSignup ? 'Create Your Account' : 'Client Portal Access'}
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Law Offices of Rozsa Gyene
-          </p>
-          <p className="text-center text-xs text-gray-500">
-            Estate Planning & Probate
-          </p>
-        </div>
-        
-        {!isSignup ? (
-          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-            <div className="rounded-md shadow-sm -space-y-px">
+
+          {!isSignup ? (
+            <div className="space-y-6">
               <div>
-                <label htmlFor="email-address" className="sr-only">Email address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
                 <input
-                  id="email-address"
-                  name="email"
                   type="email"
-                  autoComplete="email"
                   required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Email address"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   value={loginData.email}
-                  onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                  onChange={(e) => setLoginData({...loginData, email: e.target.value})}
+                  placeholder="your@email.com"
                 />
               </div>
-              <div className="relative">
-                <label htmlFor="password" className="sr-only">Password</label>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={loginData.password}
-                  onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4 text-gray-400" /> : <Eye className="h-4 w-4 text-gray-400" />}
-                </button>
-              </div>
-            </div>
 
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
-                  Forgot your password?
-                </a>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Sign in
-              </button>
-            </div>
-
-            <div className="text-center">
-              <span className="text-sm text-gray-600">Don't have an account? </span>
-              <button
-                type="button"
-                onClick={() => setIsSignup(true)}
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Sign up
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form className="mt-8 space-y-6" onSubmit={handleSignup}>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">First Name</label>
-                  <input
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    required
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                    placeholder="First Name"
-                    value={signupData.firstName}
-                    onChange={(e) => setSignupData({ ...signupData, firstName: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">Last Name</label>
-                  <input
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    required
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                    placeholder="Last Name"
-                    value={signupData.lastName}
-                    onChange={(e) => setSignupData({ ...signupData, lastName: e.target.value })}
-                  />
-                </div>
-              </div>
-              
               <div>
-                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700">Email Address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-12"
+                    value={loginData.password}
+                    onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={handleLogin}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition duration-200 transform hover:scale-[1.02]"
+              >
+                Sign In
+              </button>
+
+              <div className="text-center">
+                <p className="text-sm text-gray-600">
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsSignup(true)}
+                    className="text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Sign up
+                  </button>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
                 <input
-                  id="signup-email"
-                  name="email"
+                  type="text"
+                  required
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  value={signupData.fullName}
+                  onChange={(e) => setSignupData({...signupData, fullName: e.target.value})}
+                  placeholder="John Smith"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
+                </label>
+                <input
                   type="email"
-                  autoComplete="email"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Email Address"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   value={signupData.email}
-                  onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
+                  onChange={(e) => setSignupData({...signupData, email: e.target.value})}
+                  placeholder="your@email.com"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number
+                </label>
                 <input
-                  id="phone"
-                  name="phone"
                   type="tel"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Phone Number"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   value={signupData.phone}
-                  onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })}
+                  onChange={(e) => setSignupData({...signupData, phone: e.target.value})}
+                  placeholder="(555) 123-4567"
                 />
               </div>
-              
-              <div>
-                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700">Password</label>
-                <input
-                  id="signup-password"
-                  name="password"
-                  type="password"
-                  required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={signupData.password}
-                  onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm Password</label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                  placeholder="Confirm Password"
-                  value={signupData.confirmPassword}
-                  onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
-                />
-              </div>
-            </div>
 
-            <div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  value={signupData.password}
+                  onChange={(e) => setSignupData({...signupData, password: e.target.value})}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  value={signupData.confirmPassword}
+                  onChange={(e) => setSignupData({...signupData, confirmPassword: e.target.value})}
+                  placeholder="••••••••"
+                />
+              </div>
+
               <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={handleSignup}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition duration-200 transform hover:scale-[1.02]"
               >
                 Create Account
               </button>
-            </div>
 
-            <div className="text-center">
-              <span className="text-sm text-gray-600">Already have an account? </span>
-              <button
-                type="button"
-                onClick={() => setIsSignup(false)}
-                className="font-medium text-blue-600 hover:text-blue-500"
-              >
-                Sign in
-              </button>
+              <div className="text-center">
+                <p className="text-sm text-gray-600">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsSignup(false)}
+                    className="text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Sign in
+                  </button>
+                </p>
+              </div>
             </div>
-          </form>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 
   const Dashboard = () => (
     <div className="min-h-screen bg-gray-50">
-      {/* Mobile menu button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 rounded-md bg-white shadow-md"
-        >
-          {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
-      </div>
-
-      {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-blue-900 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
-        <div className="p-6">
-          <div className="flex items-center text-white mb-8">
-            <Shield className="h-8 w-8 mr-3" />
-            <div>
-              <h1 className="text-xl font-bold">Client Portal</h1>
-              <p className="text-sm text-blue-200">Law Offices of Rozsa Gyene</p>
-            </div>
-          </div>
-          
-          <nav className="space-y-2">
-            {[
-              { id: 'dashboard', icon: Home, label: 'Dashboard' },
-              { id: 'matters', icon: Folder, label: 'My Matters' },
-              { id: 'documents', icon: FileText, label: 'Documents' },
-              { id: 'messages', icon: MessageSquare, label: 'Messages' },
-              { id: 'billing', icon: DollarSign, label: 'Billing' },
-              { id: 'profile', icon: User, label: 'Profile' },
-            ].map((item) => (
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
               <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                  activeTab === item.id
-                    ? 'bg-blue-800 text-white'
-                    : 'text-blue-100 hover:bg-blue-800 hover:text-white'
-                }`}
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="lg:hidden mr-4 text-gray-500 hover:text-gray-700"
               >
-                <item.icon className="h-5 w-5 mr-3" />
-                {item.label}
+                <Menu size={24} />
               </button>
-            ))}
-          </nav>
-          
-          <div className="absolute bottom-6 left-6 right-6">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
-            >
-              <LogOut className="h-5 w-5 mr-3" />
-              Sign Out
-            </button>
+              <h1 className="text-2xl font-bold text-gray-900">Rozsa Gyene Law</h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button className="relative text-gray-500 hover:text-gray-700">
+                <Bell size={20} />
+                {notifications.some(n => n.unread) && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
+                )}
+              </button>
+              <div className="flex items-center space-x-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">{userData.name}</p>
+                  <p className="text-xs text-gray-500">{userData.email}</p>
+                </div>
+                <button
+                  onClick={() => setIsLoggedIn(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <LogOut size={20} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Main content */}
-      <div className="lg:ml-64 p-4 lg:p-8">
-        {activeTab === 'dashboard' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome back, John!</h2>
-            
-            {/* Stats cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-blue-100 rounded-lg p-3">
-                    <Folder className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Active Matters</p>
-                    <p className="text-2xl font-semibold text-gray-900">3</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-orange-100 rounded-lg p-3">
-                    <Clock className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Pending Tasks</p>
-                    <p className="text-2xl font-semibold text-gray-900">2</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-green-100 rounded-lg p-3">
-                    <MessageSquare className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Unread Messages</p>
-                    <p className="text-2xl font-semibold text-gray-900">1</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-purple-100 rounded-lg p-3">
-                    <DollarSign className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Balance Due</p>
-                    <p className="text-2xl font-semibold text-gray-900">$0</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className={`${mobileMenuOpen ? 'block' : 'hidden'} lg:block w-64 bg-white shadow-sm h-[calc(100vh-73px)]`}>
+          <nav className="p-4 space-y-1">
+            <button
+              onClick={() => {setActiveTab('dashboard'); setMobileMenuOpen(false)}}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                activeTab === 'dashboard' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Home size={20} />
+              <span>Dashboard</span>
+            </button>
+            <button
+              onClick={() => {setActiveTab('matters'); setMobileMenuOpen(false)}}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                activeTab === 'matters' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Briefcase size={20} />
+              <span>My Matters</span>
+            </button>
+            <button
+              onClick={() => {setActiveTab('documents'); setMobileMenuOpen(false)}}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                activeTab === 'documents' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <FileText size={20} />
+              <span>Documents</span>
+            </button>
+            <button
+              onClick={() => {setActiveTab('messages'); setMobileMenuOpen(false)}}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                activeTab === 'messages' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <MessageSquare size={20} />
+              <span>Messages</span>
+              {userData.messages.some(m => m.unread) && (
+                <span className="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                  {userData.messages.filter(m => m.unread).length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => {setActiveTab('billing'); setMobileMenuOpen(false)}}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                activeTab === 'billing' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <DollarSign size={20} />
+              <span>Billing</span>
+            </button>
+          </nav>
+        </aside>
 
-            {/* Recent activity */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <AlertCircle className="h-5 w-5 text-orange-500" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">Document review required for Living Trust</p>
-                      <p className="text-sm text-gray-500">2 hours ago</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">Property deed uploaded successfully</p>
-                      <p className="text-sm text-gray-500">1 day ago</p>
+        {/* Main Content */}
+        <main className="flex-1 p-6 overflow-auto">
+          {activeTab === 'dashboard' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome back, {userData.name.split(' ')[0]}!</h2>
+                
+                {/* Quick Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Active Matters</p>
+                        <p className="text-2xl font-bold text-gray-900">{userData.matters.length}</p>
+                      </div>
+                      <Briefcase className="text-blue-600" size={32} />
                     </div>
                   </div>
-                  
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <MessageSquare className="h-5 w-5 text-blue-500" />
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Pending Tasks</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {userData.matters.reduce((acc, m) => acc + m.tasks.filter(t => !t.completed).length, 0)}
+                        </p>
+                      </div>
+                      <Clock className="text-yellow-600" size={32} />
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-gray-900">New message from Attorney Rozsa Gyene</p>
-                      <p className="text-sm text-gray-500">2 days ago</p>
+                  </div>
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">New Messages</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {userData.messages.filter(m => m.unread).length}
+                        </p>
+                      </div>
+                      <MessageSquare className="text-green-600" size={32} />
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'matters' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">My Matters</h2>
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Matter</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Update</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {matters.map((matter) => (
-                    <tr key={matter.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{matter.title}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{matter.type}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor(matter.status)}`}>
+                {/* Recent Activity */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-6 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {userData.matters.map(matter => (
+                      <div key={matter.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div>
+                          <p className="font-medium text-gray-900">{matter.name}</p>
+                          <p className="text-sm text-gray-600">Last updated: {matter.lastUpdate}</p>
+                        </div>
+                        <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                          matter.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                        }`}>
                           {matter.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{matter.lastUpdate}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'documents' && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
-              <button className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Document
-              </button>
-            </div>
-            
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {documents.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{doc.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor(doc.status)}`}>
-                          {doc.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.uploadDate}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.size}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <button className="text-blue-600 hover:text-blue-900">
-                          <Download className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'messages' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
-            <div className="bg-white shadow rounded-lg">
-              <div className="divide-y divide-gray-200">
-                {messages.map((message) => (
-                  <div key={message.id} className={`p-6 hover:bg-gray-50 ${message.unread ? 'bg-blue-50' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <p className="text-sm font-medium text-gray-900">{message.from}</p>
-                          {message.unread && (
-                            <span className="ml-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">New</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-900 mt-1">{message.subject}</p>
-                        <p className="text-sm text-gray-500 mt-1">{message.date}</p>
                       </div>
-                      <MessageSquare className="h-5 w-5 text-gray-400" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'matters' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">My Matters</h2>
+                <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center space-x-2">
+                  <Plus size={20} />
+                  <span>New Matter</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {userData.matters.map(matter => (
+                  <div key={matter.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-semibold text-lg text-gray-900">{matter.name}</h3>
+                        <p className="text-sm text-gray-600">{matter.type}</p>
+                      </div>
+                      <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                        matter.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {matter.status}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Recent Documents</p>
+                        {matter.documents.slice(0, 2).map((doc, idx) => (
+                          <div key={idx} className="flex items-center justify-between py-2">
+                            <div className="flex items-center space-x-2">
+                              <FileText size={16} className="text-gray-400" />
+                              <span className="text-sm text-gray-600">{doc.name}</span>
+                            </div>
+                            <span className={`text-xs ${
+                              doc.status === 'Review Required' ? 'text-red-600' : 'text-green-600'
+                            }`}>
+                              {doc.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedMatter(matter)}
+                        className="w-full mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center justify-center space-x-1"
+                      >
+                        <span>View Details</span>
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'billing' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Billing & Payments</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Current Balance</h3>
-                <p className="text-3xl font-bold text-gray-900">$0.00</p>
-                <p className="text-sm text-gray-500 mt-2">All payments are up to date</p>
-                <button className="mt-4 w-full px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
-                  Make a Payment
-                </button>
+          {activeTab === 'documents' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
+                <div className="flex space-x-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                    <input
+                      type="text"
+                      placeholder="Search documents..."
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <label className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer flex items-center space-x-2">
+                    <Upload size={20} />
+                    <span>Upload</span>
+                    <input type="file" className="hidden" onChange={handleFileUpload} />
+                  </label>
+                </div>
               </div>
-              
-              <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Methods</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-                    <div className="flex items-center">
-                      <div className="h-8 w-12 bg-gray-200 rounded flex items-center justify-center text-xs font-medium">
-                        VISA
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6 space-y-4">
+                  {userData.matters.flatMap(matter => 
+                    matter.documents.map((doc, idx) => (
+                      <div key={`${matter.id}-${idx}`} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                        <div className="flex items-center space-x-4">
+                          <FileText className="text-blue-600" size={24} />
+                          <div>
+                            <p className="font-medium text-gray-900">{doc.name}</p>
+                            <p className="text-sm text-gray-600">{matter.name} • {doc.date}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                            doc.status === 'Review Required' ? 'bg-red-100 text-red-800' : 
+                            doc.status === 'Filed' ? 'bg-blue-100 text-blue-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {doc.status}
+                          </span>
+                          <button className="text-gray-500 hover:text-gray-700">
+                            <Download size={20} />
+                          </button>
+                        </div>
                       </div>
-                      <span className="ml-3 text-sm text-gray-900">•••• 4242</span>
-                    </div>
-                    <button className="text-sm text-blue-600 hover:text-blue-800">Edit</button>
-                  </div>
+                    ))
+                  )}
                 </div>
-                <button className="mt-3 text-sm text-blue-600 hover:text-blue-800">+ Add payment method</button>
               </div>
             </div>
-            
-            <div className="mt-6 bg-white shadow rounded-lg">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Transaction History</h3>
-              </div>
-              <div className="p-6">
-                <p className="text-sm text-gray-500">No transactions to display</p>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'profile' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h2>
-            
-            <div className="bg-white shadow rounded-lg">
-              <div className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h3>
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">First Name</label>
-                      <input
-                        type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="John"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Last Name</label>
-                      <input
-                        type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="Smith"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <input
-                        type="email"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="john.smith@example.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Phone</label>
-                      <input
-                        type="tel"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        defaultValue="(555) 123-4567"
-                      />
-                    </div>
-                  </div>
+          {activeTab === 'messages' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Send a Message</h3>
                 </div>
-                
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Security</h3>
-                  <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                    Change Password
-                  </button>
-                </div>
-                
-                <div className="pt-4">
-                  <button className="px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors">
-                    Save Changes
+                <div className="p-6">
+                  <textarea
+                    className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    rows="4"
+                    placeholder="Type your message here..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+                  >
+                    Send Message
                   </button>
                 </div>
               </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Message History</h3>
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {userData.messages.map(msg => (
+                    <div key={msg.id} className="p-6 hover:bg-gray-50 transition">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <p className="font-medium text-gray-900">{msg.subject}</p>
+                          <p className="text-sm text-gray-600">From: {msg.from}</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-500">{msg.date}</span>
+                          {msg.unread && <span className="h-2 w-2 bg-blue-600 rounded-full"></span>}
+                        </div>
+                      </div>
+                      <p className="text-gray-700 mt-2">{msg.content}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Footer */}
-      <div className="lg:ml-64 p-4 lg:p-8">
-        <div className="mt-8 pt-8 border-t border-gray-200">
-          <div className="text-center text-sm text-gray-600">
-            <p className="font-medium">Law Offices of Rozsa Gyene</p>
-            <p>450 N Brand Blvd. Suite 600, Glendale, CA 91203</p>
-            <p>Phone: (818) 291-6217 | Email: rozsagyenelaw@yahoo.com</p>
-          </div>
-        </div>
+          )}
+
+          {activeTab === 'billing' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Billing & Payments</h2>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Balance</h3>
+                  <p className="text-3xl font-bold text-gray-900">$0.00</p>
+                  <p className="text-sm text-gray-600 mt-2">All payments are up to date</p>
+                  <button className="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">
+                    Make a Payment
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Methods</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <DollarSign className="text-gray-600" size={20} />
+                        <span className="text-gray-700">Visa ending in 4242</span>
+                      </div>
+                      <button className="text-blue-600 hover:text-blue-700 text-sm">Edit</button>
+                    </div>
+                    <button className="w-full text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center justify-center space-x-1 py-2">
+                      <Plus size={16} />
+                      <span>Add Payment Method</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Recent Transactions</h3>
+                </div>
+                <div className="p-6">
+                  <p className="text-gray-600 text-center py-8">No recent transactions</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
 
-  return isLoggedIn ? <Dashboard /> : <LoginForm />;
+  return isLoggedIn ? <Dashboard /> : <LoginScreen />;
 };
 
 export default ClientPortal;
