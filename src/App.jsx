@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X } from 'lucide-react';
 
 const ClientPortal = () => {
@@ -36,13 +36,11 @@ const ClientPortal = () => {
     { id: 3, from: 'Attorney Rozsa Gyene', subject: 'Trust Funding Instructions', date: '2024-01-10', unread: false }
   ];
 
-  const handleLogin = (e) => {
-    e.preventDefault();
+  const handleLogin = () => {
     setIsLoggedIn(true);
   };
 
-  const handleSignup = (e) => {
-    e.preventDefault();
+  const handleSignup = () => {
     setIsLoggedIn(true);
   };
 
@@ -86,38 +84,40 @@ const ClientPortal = () => {
         </div>
         
         {!isSignup ? (
-          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-            <div className="rounded-md shadow-sm -space-y-px">
+          <div className="mt-8 space-y-6">
+            <div className="rounded-md shadow-sm space-y-4">
               <div>
-                <label htmlFor="email-address" className="sr-only">Email address</label>
+                <label htmlFor="email-address" className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
                 <input
                   id="email-address"
                   name="email"
                   type="email"
                   autoComplete="email"
                   required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Email address"
                   value={loginData.email}
                   onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                  style={{ width: '100%' }}
                 />
               </div>
               <div className="relative">
-                <label htmlFor="password" className="sr-only">Password</label>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                 <input
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Password"
                   value={loginData.password}
                   onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                  style={{ width: '100%' }}
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center pt-6"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4 text-gray-400" /> : <Eye className="h-4 w-4 text-gray-400" />}
@@ -135,8 +135,8 @@ const ClientPortal = () => {
 
             <div>
               <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={handleLogin}
+                className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Sign in
               </button>
@@ -152,32 +152,32 @@ const ClientPortal = () => {
                 Sign up
               </button>
             </div>
-          </form>
+          </div>
         ) : (
-          <form className="mt-8 space-y-6" onSubmit={handleSignup}>
+          <div className="mt-8 space-y-6">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">First Name</label>
+                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                   <input
                     id="firstName"
                     name="firstName"
                     type="text"
                     required
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="First Name"
                     value={signupData.firstName}
                     onChange={(e) => setSignupData({ ...signupData, firstName: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">Last Name</label>
+                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                   <input
                     id="lastName"
                     name="lastName"
                     type="text"
                     required
-                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Last Name"
                     value={signupData.lastName}
                     onChange={(e) => setSignupData({ ...signupData, lastName: e.target.value })}
@@ -186,14 +186,14 @@ const ClientPortal = () => {
               </div>
               
               <div>
-                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700">Email Address</label>
+                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                 <input
                   id="signup-email"
                   name="email"
                   type="email"
                   autoComplete="email"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Email Address"
                   value={signupData.email}
                   onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
@@ -201,13 +201,13 @@ const ClientPortal = () => {
               </div>
               
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone Number</label>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <input
                   id="phone"
                   name="phone"
                   type="tel"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Phone Number"
                   value={signupData.phone}
                   onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })}
@@ -215,13 +215,13 @@ const ClientPortal = () => {
               </div>
               
               <div>
-                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700">Password</label>
+                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                 <input
                   id="signup-password"
                   name="password"
                   type="password"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Password"
                   value={signupData.password}
                   onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
@@ -229,13 +229,13 @@ const ClientPortal = () => {
               </div>
               
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
                 <input
                   id="confirmPassword"
                   name="confirmPassword"
                   type="password"
                   required
-                  className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Confirm Password"
                   value={signupData.confirmPassword}
                   onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
@@ -245,8 +245,8 @@ const ClientPortal = () => {
 
             <div>
               <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={handleSignup}
+                className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Create Account
               </button>
@@ -262,7 +262,7 @@ const ClientPortal = () => {
                 Sign in
               </button>
             </div>
-          </form>
+          </div>
         )}
       </div>
     </div>
@@ -334,7 +334,7 @@ const ClientPortal = () => {
       <div className="lg:ml-64 p-4 lg:p-8">
         {activeTab === 'dashboard' && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome back, John!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome back!</h2>
             
             {/* Stats cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -588,7 +588,7 @@ const ClientPortal = () => {
                       <label className="block text-sm font-medium text-gray-700">First Name</label>
                       <input
                         type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         defaultValue="John"
                       />
                     </div>
@@ -596,7 +596,7 @@ const ClientPortal = () => {
                       <label className="block text-sm font-medium text-gray-700">Last Name</label>
                       <input
                         type="text"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         defaultValue="Smith"
                       />
                     </div>
@@ -604,7 +604,7 @@ const ClientPortal = () => {
                       <label className="block text-sm font-medium text-gray-700">Email</label>
                       <input
                         type="email"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         defaultValue="john.smith@example.com"
                       />
                     </div>
@@ -612,7 +612,7 @@ const ClientPortal = () => {
                       <label className="block text-sm font-medium text-gray-700">Phone</label>
                       <input
                         type="tel"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         defaultValue="(555) 123-4567"
                       />
                     </div>
