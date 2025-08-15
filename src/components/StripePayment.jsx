@@ -23,27 +23,27 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
     },
     { 
       label: 'Trust Amendment', 
-      amount: $150,
+      amount: 150,
       paymentLink: 'https://buy.stripe.com/eVqcN6evT5lq4lCai83Nm03'
     },
     { 
       label: 'Single Will', 
-      amount: $250,
+      amount: 250,
       paymentLink: 'https://buy.stripe.com/fZu14odrP29ebO4gGw3Nm08'
     },
     { 
       label: 'Joint Will', 
-      amount: $350,
+      amount: 350,
       paymentLink: 'https://buy.stripe.com/3cI8wQ2Nb3di19q3TK3Nm09'
     },
     { 
       label: 'Living Trust (Single)', 
-      amount: $575,
+      amount: 575,
       paymentLink: 'https://buy.stripe.com/9B65kE9bz6puf0g0Hy3Nm00'
     },
     { 
       label: 'Living Trust (Joint)', 
-      amount: $675,
+      amount: 675,
       paymentLink: 'https://buy.stripe.com/bJeeVe0F3eW0g4k61S3Nm02'
     },
   ];
