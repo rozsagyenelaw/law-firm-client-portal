@@ -8,7 +8,8 @@ import {
 import { 
   signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  getAuth
 } from 'firebase/auth';
 import { 
   collection, 
@@ -30,6 +31,7 @@ import {
 } from 'firebase/storage';
 import { auth, db, storage } from '../firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
 
 const AdminDashboard = () => {
   const [adminUser, setAdminUser] = useState(null);
@@ -127,29 +129,30 @@ const AdminDashboard = () => {
     const formData = new FormData(e.target);
     
     try {
-      // Create auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.get('email'),
-        formData.get('password')
-      );
+      // Generate a random password if you want to auto-generate it
+      const tempPassword = formData.get('password');
+      
+      // Create a temporary unique ID for the client
+      const tempClientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-      // Create user profile
-      await addDoc(collection(db, 'users'), {
-        uid: userCredential.user.uid,
+      // Create user profile first (without auth)
+      const userDocRef = await addDoc(collection(db, 'users'), {
+        tempId: tempClientId,
         firstName: formData.get('firstName'),
         lastName: formData.get('lastName'),
         email: formData.get('email'),
         phone: formData.get('phone'),
         address: formData.get('address'),
         role: 'client',
+        tempPassword: tempPassword, // Store temporarily - remove this in production
+        needsAccountSetup: true,
         createdAt: serverTimestamp(),
         createdBy: adminUser.uid
       });
 
       // Create initial matter
       await addDoc(collection(db, 'matters'), {
-        clientId: userCredential.user.uid,
+        clientId: tempClientId,
         title: formData.get('matterTitle') || `Estate Planning - ${formData.get('firstName')} ${formData.get('lastName')}`,
         type: formData.get('matterType') || 'Estate Planning',
         status: 'Active',
@@ -157,9 +160,12 @@ const AdminDashboard = () => {
         lastUpdate: serverTimestamp()
       });
 
-      alert('Client created successfully!');
+      alert(`Client created successfully!\n\nPlease send the client their login credentials:\nEmail: ${formData.get('email')}\nPassword: ${tempPassword}\n\nThey will need to complete their account setup on first login.`);
+      
       setShowNewClientForm(false);
+      e.target.reset();
       await loadAllData();
+      
     } catch (error) {
       alert('Error creating client: ' + error.message);
     }
