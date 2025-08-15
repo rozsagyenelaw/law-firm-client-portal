@@ -248,6 +248,11 @@ const AdminDashboard = () => {
     }
   };
 
+  // Add this CSS for proper input styling
+  const inputClassName = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm";
+  const textareaClassName = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm";
+  const selectClassName = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm";
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -482,7 +487,8 @@ const AdminDashboard = () => {
                         name="firstName"
                         type="text"
                         required
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={inputClassName}
+                        placeholder="Enter first name"
                       />
                     </div>
                     <div>
@@ -491,7 +497,8 @@ const AdminDashboard = () => {
                         name="lastName"
                         type="text"
                         required
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={inputClassName}
+                        placeholder="Enter last name"
                       />
                     </div>
                   </div>
@@ -503,7 +510,8 @@ const AdminDashboard = () => {
                         name="email"
                         type="email"
                         required
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={inputClassName}
+                        placeholder="client@example.com"
                       />
                     </div>
                     <div>
@@ -512,7 +520,8 @@ const AdminDashboard = () => {
                         name="phone"
                         type="tel"
                         required
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={inputClassName}
+                        placeholder="(555) 123-4567"
                       />
                     </div>
                   </div>
@@ -522,7 +531,8 @@ const AdminDashboard = () => {
                     <textarea
                       name="address"
                       rows={2}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={textareaClassName}
+                      placeholder="Enter client address"
                     />
                   </div>
                   
@@ -534,14 +544,14 @@ const AdminDashboard = () => {
                         type="password"
                         required
                         placeholder="Temporary password for client"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={inputClassName}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Matter Type</label>
                       <select
                         name="matterType"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        className={selectClassName}
                       >
                         <option>Estate Planning</option>
                         <option>Trust Administration</option>
@@ -652,7 +662,7 @@ const AdminDashboard = () => {
                   </label>
                   <select
                     onChange={(e) => setSelectedClient(clients.find(c => c.id === e.target.value))}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    className={selectClassName}
                   >
                     <option value="">Choose a client...</option>
                     {clients.map((client) => (
@@ -776,7 +786,7 @@ const AdminDashboard = () => {
                     <select
                       name="clientId"
                       required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={selectClassName}
                     >
                       <option value="">Choose a client...</option>
                       {clients.map((client) => (
@@ -793,7 +803,8 @@ const AdminDashboard = () => {
                       name="subject"
                       type="text"
                       required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={inputClassName}
+                      placeholder="Enter message subject"
                     />
                   </div>
                   
@@ -803,7 +814,8 @@ const AdminDashboard = () => {
                       name="message"
                       rows={4}
                       required
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      className={textareaClassName}
+                      placeholder="Type your message here..."
                     />
                   </div>
                   
