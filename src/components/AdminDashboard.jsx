@@ -50,6 +50,8 @@ const AdminDashboard = () => {
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [showMessageForm, setShowMessageForm] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showClientDetails, setShowClientDetails] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
 
   // Admin emails that are allowed to access the dashboard
   const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com']; // Add your admin emails here
@@ -481,6 +483,59 @@ const AdminDashboard = () => {
               </button>
             </div>
 
+            {/* Client Details Modal */}
+            {selectedClient && (
+              <div className="bg-white rounded-lg shadow mb-6 p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Client Details</h3>
+                  <button
+                    onClick={() => setSelectedClient(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Name</p>
+                    <p className="font-medium">{selectedClient.firstName} {selectedClient.lastName}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Email</p>
+                    <p className="font-medium">{selectedClient.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Phone</p>
+                    <p className="font-medium">{selectedClient.phone}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Address</p>
+                    <p className="font-medium">{selectedClient.address || 'Not provided'}</p>
+                  </div>
+                </div>
+                
+                <div className="mt-6 flex space-x-3">
+                  <button
+                    onClick={() => {
+                      setActiveTab('documents');
+                    }}
+                    className="px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                  >
+                    View Documents
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('messages');
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    View Messages
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* New Client Form */}
             {showNewClientForm && (
               <div className="bg-white rounded-lg shadow mb-6 p-6">
@@ -636,12 +691,20 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <button
-                          onClick={() => setSelectedClient(client)}
+                          onClick={() => {
+                            setSelectedClient(client);
+                            setActiveTab('documents');
+                          }}
                           className="text-blue-600 hover:text-blue-900 mr-3"
                         >
                           View
                         </button>
-                        <button className="text-gray-600 hover:text-gray-900">
+                        <button 
+                          onClick={() => {
+                            alert('Edit feature coming soon! For now, create a new client.');
+                          }}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
                           Edit
                         </button>
                       </td>
