@@ -232,16 +232,31 @@ const ClientPortal = () => {
     setActiveTab('dashboard');
   };
 
-  // If admin is accessing /admin route, show admin dashboard
-  if (isAdminRoute && isAdmin) {
-    return <AdminDashboard />;
+  // If accessing /admin route, show admin dashboard for logged in admins
+  if (isAdminRoute) {
+    if (loading) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <Shield className="h-12 w-12 text-blue-900 animate-pulse mx-auto mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (user && isAdmin) {
+      return <AdminDashboard />;
+    }
+    
+    // If not logged in or not admin, redirect to main portal
+    if (!loading && (!user || !isAdmin)) {
+      window.location.href = '/';
+      return null;
+    }
   }
 
-  // Redirect admins trying to access client portal
-  if (user && isAdmin && !isAdminRoute) {
-    window.location.href = '/admin';
-    return null;
-  }
+  // Regular client portal logic continues below...
 
   if (loading) {
     return (
@@ -260,7 +275,9 @@ const ClientPortal = () => {
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
             <Shield className="mx-auto h-12 w-12 text-blue-900" />
-            <h1 className="mt-6 text-3xl font-bold text-gray-900">Client Portal Access</h1>
+            <h1 className="mt-6 text-3xl font-bold text-gray-900">
+              {isAdminRoute ? 'Admin Access' : 'Client Portal Access'}
+            </h1>
             <p className="mt-2 text-gray-600">Law Offices of Rozsa Gyene</p>
             <p className="text-sm text-gray-500">Estate Planning & Probate</p>
           </div>
@@ -325,16 +342,18 @@ const ClientPortal = () => {
                   Sign in
                 </button>
 
-                <div className="text-center">
-                  <span className="text-sm text-gray-600">Don't have an account? </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsSignup(true)}
-                    className="text-sm text-blue-600 hover:text-blue-500"
-                  >
-                    Sign up
-                  </button>
-                </div>
+                {!isAdminRoute && (
+                  <div className="text-center">
+                    <span className="text-sm text-gray-600">Don't have an account? </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSignup(true)}
+                      className="text-sm text-blue-600 hover:text-blue-500"
+                    >
+                      Sign up
+                    </button>
+                  </div>
+                )}
               </form>
             ) : (
               <form className="space-y-6" onSubmit={handleSignup}>
@@ -431,11 +450,13 @@ const ClientPortal = () => {
               </form>
             )}
 
-            <div className="mt-6 text-center">
-              <a href="/admin" className="text-xs text-gray-500 hover:text-gray-700">
-                Admin Access
-              </a>
-            </div>
+            {!isAdminRoute && (
+              <div className="mt-6 text-center">
+                <a href="/admin" className="text-xs text-gray-500 hover:text-gray-700">
+                  Admin Access
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </div>
