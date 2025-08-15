@@ -26,6 +26,7 @@ import {
 } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
 import StripePayment from './components/StripePayment';
+import AdminDashboard from './components/AdminDashboard';
 
 const ClientPortal = () => {
   const [user, setUser] = useState(null);
@@ -39,22 +40,36 @@ const ClientPortal = () => {
   const [userDocuments, setUserDocuments] = useState([]);
   const [userMatters, setUserMatters] = useState([]);
   const [userMessages, setUserMessages] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Admin emails that have access to admin dashboard
+  const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
+
+  // Check if current path is /admin
+  const isAdminRoute = window.location.pathname === '/admin';
 
   // Listen for auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        // Load user data
-        await loadUserData(user.uid);
+        // Check if user is admin
+        if (ADMIN_EMAILS.includes(user.email)) {
+          setIsAdmin(true);
+        }
+        // Load user data only if not on admin route
+        if (!isAdminRoute) {
+          await loadUserData(user.uid);
+        }
       } else {
         setUser(null);
+        setIsAdmin(false);
       }
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [isAdminRoute]);
 
   // Load user data from Firestore
   const loadUserData = async (userId) => {
@@ -168,6 +183,10 @@ const ClientPortal = () => {
       await signOut(auth);
       setActiveTab('dashboard');
       setSidebarOpen(false);
+      // Redirect to home if on admin page
+      if (isAdminRoute) {
+        window.location.href = '/';
+      }
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -236,6 +255,11 @@ const ClientPortal = () => {
         return 'text-gray-600 bg-gray-100';
     }
   };
+
+  // If on admin route, show admin dashboard
+  if (isAdminRoute) {
+    return <AdminDashboard />;
+  }
 
   if (loading) {
     return (
@@ -349,6 +373,16 @@ const ClientPortal = () => {
                 >
                   Sign up
                 </button>
+              </div>
+              
+              {/* Admin access link - hidden but accessible */}
+              <div className="text-center mt-8">
+                <a 
+                  href="/admin" 
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Admin Access
+                </a>
               </div>
             </form>
           ) : (
@@ -530,6 +564,19 @@ const ClientPortal = () => {
               </button>
             ))}
           </nav>
+          
+          {/* Admin access for admin users */}
+          {isAdmin && (
+            <div className="mt-4 pt-4 border-t border-blue-800">
+              <a
+                href="/admin"
+                className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
+              >
+                <Shield className="h-5 w-5 mr-3" />
+                Admin Dashboard
+              </a>
+            </div>
+          )}
           
           <div className="absolute bottom-6 left-6 right-6">
             <button
