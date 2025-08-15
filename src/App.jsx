@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard } from 'lucide-react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { 
   doc, 
@@ -16,7 +19,8 @@ import {
   getDocs,
   addDoc,
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -41,6 +45,18 @@ const ClientPortal = () => {
   const [userMatters, setUserMatters] = useState([]);
   const [userMessages, setUserMessages] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Password change states
+  const [passwordChangeData, setPasswordChangeData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
 
   // Admin emails that have access to admin dashboard
   const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
@@ -53,31 +69,33 @@ const ClientPortal = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        // Check if user is admin
-        if (ADMIN_EMAILS.includes(user.email)) {
-          setIsAdmin(true);
+        setIsAdmin(ADMIN_EMAILS.includes(user.email));
+        
+        // Load user profile
+        const userQuery = query(collection(db, 'users'), where('email', '==', user.email));
+        const userSnapshot = await getDocs(userQuery);
+        if (!userSnapshot.empty) {
+          setUserProfile({ id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() });
         }
-        // Load user data only if not on admin route
-        if (!isAdminRoute) {
-          await loadUserData(user.uid);
-        }
+        
+        await loadUserData(user);
       } else {
         setUser(null);
         setIsAdmin(false);
+        setUserProfile(null);
       }
       setLoading(false);
     });
 
     return unsubscribe;
-  }, [isAdminRoute]);
+  }, []);
 
-  // Load user data from Firestore
-  const loadUserData = async (userId) => {
+  const loadUserData = async (user) => {
     try {
       // Load user's matters
       const mattersQuery = query(
-        collection(db, 'matters'),
-        where('clientId', '==', userId),
+        collection(db, 'matters'), 
+        where('clientId', '==', user.uid),
         orderBy('createdAt', 'desc')
       );
       const mattersSnapshot = await getDocs(mattersQuery);
@@ -90,7 +108,7 @@ const ClientPortal = () => {
       // Load user's documents
       const documentsQuery = query(
         collection(db, 'documents'),
-        where('clientId', '==', userId),
+        where('clientId', '==', user.uid),
         orderBy('uploadDate', 'desc')
       );
       const documentsSnapshot = await getDocs(documentsQuery);
@@ -103,7 +121,7 @@ const ClientPortal = () => {
       // Load user's messages
       const messagesQuery = query(
         collection(db, 'messages'),
-        where('clientId', '==', userId),
+        where('clientId', '==', user.uid),
         orderBy('date', 'desc')
       );
       const messagesSnapshot = await getDocs(messagesQuery);
@@ -117,45 +135,91 @@ const ClientPortal = () => {
     }
   };
 
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordChangeError('');
+    setPasswordChangeMessage('');
+
+    // Validate passwords
+    if (passwordChangeData.newPassword !== passwordChangeData.confirmPassword) {
+      setPasswordChangeError('New passwords do not match');
+      return;
+    }
+
+    if (passwordChangeData.newPassword.length < 6) {
+      setPasswordChangeError('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      // Re-authenticate user
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        passwordChangeData.currentPassword
+      );
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, passwordChangeData.newPassword);
+
+      setPasswordChangeMessage('Password changed successfully!');
+      setPasswordChangeData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setPasswordChangeMessage('');
+      }, 3000);
+    } catch (error) {
+      if (error.code === 'auth/wrong-password') {
+        setPasswordChangeError('Current password is incorrect');
+      } else {
+        setPasswordChangeError('Error changing password: ' + error.message);
+      }
+    }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    const formData = new FormData(e.target);
+    
+    try {
+      await signInWithEmailAndPassword(auth, formData.get('email'), formData.get('password'));
+    } catch (error) {
+      setError('Invalid email or password');
+    }
+  };
+
   const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
-    
     const formData = new FormData(e.target);
-    const email = formData.get('email');
-    const password = formData.get('password');
-    const confirmPassword = formData.get('confirmPassword');
-    const firstName = formData.get('firstName');
-    const lastName = formData.get('lastName');
-    const phone = formData.get('phone');
-
-    if (password !== confirmPassword) {
+    
+    if (formData.get('password') !== formData.get('confirmPassword')) {
       setError('Passwords do not match');
       return;
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const userCredential = await createUserWithEmailAndPassword(
+        auth, 
+        formData.get('email'), 
+        formData.get('password')
+      );
 
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', user.uid), {
-        firstName,
-        lastName,
-        email,
-        phone,
-        createdAt: serverTimestamp(),
-        role: 'client'
-      });
-
-      // Create initial matter for new client
-      await addDoc(collection(db, 'matters'), {
-        clientId: user.uid,
-        title: `Estate Planning - ${firstName} ${lastName}`,
-        type: 'Estate Planning',
-        status: 'Initial Consultation',
-        createdAt: serverTimestamp(),
-        lastUpdate: serverTimestamp()
+      // Create user profile
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        email: formData.get('email'),
+        firstName: formData.get('firstName'),
+        lastName: formData.get('lastName'),
+        phone: formData.get('phone'),
+        role: 'client',
+        createdAt: serverTimestamp()
       });
 
     } catch (error) {
@@ -163,102 +227,20 @@ const ClientPortal = () => {
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    
-    const formData = new FormData(e.target);
-    const email = formData.get('email');
-    const password = formData.get('password');
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      setError('Invalid email or password');
-    }
-  };
-
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setActiveTab('dashboard');
-      setSidebarOpen(false);
-      // Redirect to home if on admin page
-      if (isAdminRoute) {
-        window.location.href = '/';
-      }
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
+    await signOut(auth);
+    setActiveTab('dashboard');
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
-
-    try {
-      setUploadProgress(10);
-      
-      // Create a reference to the file in Firebase Storage
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${file.name}`;
-      const storageRef = ref(storage, `documents/${user.uid}/${fileName}`);
-      
-      // Upload the file
-      setUploadProgress(50);
-      const snapshot = await uploadBytes(storageRef, file);
-      
-      // Get the download URL
-      setUploadProgress(75);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      
-      // Save document metadata to Firestore
-      await addDoc(collection(db, 'documents'), {
-        clientId: user.uid,
-        name: file.name,
-        fileName: fileName,
-        url: downloadURL,
-        size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-        status: 'Uploaded',
-        uploadDate: serverTimestamp(),
-        type: file.type
-      });
-      
-      setUploadProgress(100);
-      
-      // Reload documents
-      await loadUserData(user.uid);
-      
-      // Reset progress after a delay
-      setTimeout(() => setUploadProgress(0), 2000);
-      
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      setError('Error uploading file');
-      setUploadProgress(0);
-    }
-  };
-
-  const statusColor = (status) => {
-    switch (status) {
-      case 'Active':
-      case 'Approved':
-      case 'Filed':
-      case 'Uploaded':
-        return 'text-green-600 bg-green-100';
-      case 'In Progress':
-      case 'Initial Consultation':
-        return 'text-blue-600 bg-blue-100';
-      case 'Review Required':
-        return 'text-orange-600 bg-orange-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  // If on admin route, show admin dashboard
-  if (isAdminRoute) {
+  // If admin is accessing /admin route, show admin dashboard
+  if (isAdminRoute && isAdmin) {
     return <AdminDashboard />;
+  }
+
+  // Redirect admins trying to access client portal
+  if (user && isAdmin && !isAdminRoute) {
+    window.location.href = '/admin';
+    return null;
   }
 
   if (loading) {
@@ -272,249 +254,195 @@ const ClientPortal = () => {
     );
   }
 
-  const LoginForm = () => (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <div className="flex justify-center">
-            <Shield className="h-12 w-12 text-blue-900" />
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <Shield className="mx-auto h-12 w-12 text-blue-900" />
+            <h1 className="mt-6 text-3xl font-bold text-gray-900">Client Portal Access</h1>
+            <p className="mt-2 text-gray-600">Law Offices of Rozsa Gyene</p>
+            <p className="text-sm text-gray-500">Estate Planning & Probate</p>
           </div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            {isSignup ? 'Create Your Account' : 'Client Portal Access'}
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Law Offices of Rozsa Gyene
-          </p>
-          <p className="text-center text-xs text-gray-500">
-            Estate Planning & Probate
-          </p>
-        </div>
-        
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {error}
-            </div>
-          )}
-          
-          {!isSignup ? (
-            <form className="space-y-6" onSubmit={handleLogin}>
-              <div>
-                <label htmlFor="email-address" className="block text-sm font-medium text-gray-700">
-                  Email address
-                </label>
-                <div className="mt-1">
+
+          <div className="mt-8 bg-white py-8 px-4 shadow rounded-lg sm:px-10">
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded relative">
+                {error}
+              </div>
+            )}
+
+            {!isSignup ? (
+              <form className="space-y-6" onSubmit={handleLogin}>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Email address
+                  </label>
                   <input
-                    id="email-address"
                     name="email"
                     type="email"
-                    autoComplete="email"
                     required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Email address"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <div className="mt-1 relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    className="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Password"
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
+                  <div className="mt-1 relative">
+                    <input
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    >
+                      {showPassword ? 
+                        <EyeOff className="h-5 w-5 text-gray-400" /> : 
+                        <Eye className="h-5 w-5 text-gray-400" />
+                      }
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between">
-                <div className="text-sm">
-                  <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
+                <div className="flex items-center justify-between">
+                  <a href="#" className="text-sm text-blue-600 hover:text-blue-500">
                     Forgot your password?
                   </a>
                 </div>
-              </div>
 
-              <div>
                 <button
                   type="submit"
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Sign in
                 </button>
-              </div>
 
-              <div className="text-center">
-                <span className="text-sm text-gray-600">Don't have an account? </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignup(true);
-                    setError('');
-                  }}
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  Sign up
-                </button>
-              </div>
-              
-              {/* Admin access link - hidden but accessible */}
-              <div className="text-center mt-8">
-                <a 
-                  href="/admin" 
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Admin Access
-                </a>
-              </div>
-            </form>
-          ) : (
-            <form className="space-y-6" onSubmit={handleSignup}>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                    First Name
-                  </label>
-                  <div className="mt-1">
+                <div className="text-center">
+                  <span className="text-sm text-gray-600">Don't have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSignup(true)}
+                    className="text-sm text-blue-600 hover:text-blue-500"
+                  >
+                    Sign up
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="space-y-6" onSubmit={handleSignup}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      First Name
+                    </label>
                     <input
-                      id="firstName"
                       name="firstName"
                       type="text"
                       required
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      placeholder="First Name"
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
-                </div>
-                <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                    Last Name
-                  </label>
-                  <div className="mt-1">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Last Name
+                    </label>
                     <input
-                      id="lastName"
                       name="lastName"
                       type="text"
                       required
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      placeholder="Last Name"
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                 </div>
-              </div>
-              
-              <div>
-                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700">
-                  Email Address
-                </label>
-                <div className="mt-1">
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Email address
+                  </label>
                   <input
-                    id="signup-email"
                     name="email"
                     type="email"
-                    autoComplete="email"
                     required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Email Address"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              </div>
-              
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                  Phone Number
-                </label>
-                <div className="mt-1">
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Phone
+                  </label>
                   <input
-                    id="phone"
                     name="phone"
                     type="tel"
                     required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Phone Number"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              </div>
-              
-              <div>
-                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <div className="mt-1">
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
                   <input
-                    id="signup-password"
                     name="password"
                     type="password"
                     required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Password (minimum 6 characters)"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              </div>
-              
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                  Confirm Password
-                </label>
-                <div className="mt-1">
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Confirm Password
+                  </label>
                   <input
-                    id="confirmPassword"
                     name="confirmPassword"
                     type="password"
                     required
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Confirm Password"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              </div>
 
-              <div>
                 <button
                   type="submit"
                   className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Create Account
                 </button>
-              </div>
 
-              <div className="text-center">
-                <span className="text-sm text-gray-600">Already have an account? </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignup(false);
-                    setError('');
-                  }}
-                  className="font-medium text-blue-600 hover:text-blue-500"
-                >
-                  Sign in
-                </button>
-              </div>
-            </form>
-          )}
+                <div className="text-center">
+                  <span className="text-sm text-gray-600">Already have an account? </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSignup(false)}
+                    className="text-sm text-blue-600 hover:text-blue-500"
+                  >
+                    Sign in
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-6 text-center">
+              <a href="/admin" className="text-xs text-gray-500 hover:text-gray-700">
+                Admin Access
+              </a>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  const Dashboard = () => (
+  return (
     <div className="min-h-screen bg-gray-50">
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
@@ -528,57 +456,47 @@ const ClientPortal = () => {
 
       {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-blue-900 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
-        <div className="p-6">
-          <div className="flex items-center text-white mb-8">
-            <Shield className="h-8 w-8 mr-3" />
-            <div>
-              <h1 className="text-xl font-bold">Client Portal</h1>
-              <p className="text-sm text-blue-200">Law Offices of Rozsa Gyene</p>
+        <div className="h-full flex flex-col">
+          <div className="p-6">
+            <div className="flex items-center text-white mb-8">
+              <Shield className="h-8 w-8 mr-3" />
+              <div>
+                <h1 className="text-xl font-bold">Client Portal</h1>
+                <p className="text-sm text-blue-200">Rozsa Gyene Law</p>
+              </div>
             </div>
+            
+            <nav className="space-y-2">
+              {[
+                { id: 'dashboard', icon: Home, label: 'Dashboard' },
+                { id: 'documents', icon: FileText, label: 'Documents' },
+                { id: 'messages', icon: MessageSquare, label: 'Messages' },
+                { id: 'billing', icon: DollarSign, label: 'Billing' },
+                { id: 'settings', icon: Settings, label: 'Account Settings' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-blue-800 text-white'
+                      : 'text-blue-100 hover:bg-blue-800 hover:text-white'
+                  }`}
+                >
+                  <item.icon className="h-5 w-5 mr-3" />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
           </div>
           
-          <nav className="space-y-2">
-            {[
-              { id: 'dashboard', icon: Home, label: 'Dashboard' },
-              { id: 'matters', icon: Folder, label: 'My Matters' },
-              { id: 'documents', icon: FileText, label: 'Documents' },
-              { id: 'messages', icon: MessageSquare, label: 'Messages' },
-              { id: 'appointments', icon: Calendar, label: 'Appointments' },
-              { id: 'billing', icon: CreditCard, label: 'Billing' },
-              { id: 'profile', icon: User, label: 'Profile' },
-            ].map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                  activeTab === item.id
-                    ? 'bg-blue-800 text-white'
-                    : 'text-blue-100 hover:bg-blue-800 hover:text-white'
-                }`}
-              >
-                <item.icon className="h-5 w-5 mr-3" />
-                {item.label}
-              </button>
-            ))}
-          </nav>
-          
-          {/* Admin access for admin users */}
-          {isAdmin && (
-            <div className="mt-4 pt-4 border-t border-blue-800">
-              <a
-                href="/admin"
-                className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
-              >
-                <Shield className="h-5 w-5 mr-3" />
-                Admin Dashboard
-              </a>
+          <div className="mt-auto p-6">
+            <div className="text-blue-200 text-sm mb-4">
+              {userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}
             </div>
-          )}
-          
-          <div className="absolute bottom-6 left-6 right-6">
             <button
               onClick={handleLogout}
               className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
@@ -591,339 +509,326 @@ const ClientPortal = () => {
       </div>
 
       {/* Main content */}
-      <div className="lg:ml-64 p-4 lg:p-8">
-        {activeTab === 'dashboard' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome back!</h2>
-            
-            {/* Stats cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-blue-100 rounded-lg p-3">
-                    <Folder className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Active Matters</p>
-                    <p className="text-2xl font-semibold text-gray-900">{userMatters.length}</p>
-                  </div>
-                </div>
-              </div>
+      <div className="lg:ml-64">
+        <div className="p-4 sm:p-6 lg:p-8">
+          {/* Dashboard */}
+          {activeTab === 'dashboard' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Welcome Back!</h2>
               
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-orange-100 rounded-lg p-3">
-                    <FileText className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Documents</p>
-                    <p className="text-2xl font-semibold text-gray-900">{userDocuments.length}</p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-green-100 rounded-lg p-3">
-                    <MessageSquare className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Unread Messages</p>
-                    <p className="text-2xl font-semibold text-gray-900">
-                      {userMessages.filter(m => m.unread).length}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-purple-100 rounded-lg p-3">
-                    <DollarSign className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Balance Due</p>
-                    <p className="text-2xl font-semibold text-gray-900">$0</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent activity */}
-            <div className="bg-white rounded-lg shadow">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {userDocuments.slice(0, 3).map((doc) => (
-                    <div key={doc.id} className="flex items-center">
-                      <div className="flex-shrink-0">
-                        <CheckCircle className="h-5 w-5 text-green-500" />
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-gray-900">Document uploaded: {doc.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  {userDocuments.length === 0 && (
-                    <p className="text-sm text-gray-500">No recent activity</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'matters' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">My Matters</h2>
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Matter</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Update</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {userMatters.map((matter) => (
-                    <tr key={matter.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{matter.title}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{matter.type}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor(matter.status)}`}>
-                          {matter.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {matter.lastUpdate?.toDate ? matter.lastUpdate.toDate().toLocaleDateString() : 'N/A'}
-                      </td>
-                    </tr>
-                  ))}
-                  {userMatters.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
-                        No matters found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'documents' && (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
-              <label className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-lg hover:bg-blue-800 transition-colors cursor-pointer">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Document
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                  onChange={handleFileUpload}
-                />
-              </label>
-            </div>
-            
-            {uploadProgress > 0 && (
-              <div className="mb-4 bg-blue-50 rounded-lg p-4">
-                <div className="flex justify-between text-sm text-blue-700 mb-2">
-                  <span>Uploading...</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="w-full bg-blue-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
-            
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {userDocuments.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{doc.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor(doc.status)}`}>
-                          {doc.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{doc.size}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <a 
-                          href={doc.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                  {userDocuments.length === 0 && (
-                    <tr>
-                      <td colSpan="5" className="px-6 py-4 text-center text-sm text-gray-500">
-                        No documents uploaded yet
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'messages' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
-            <div className="bg-white shadow rounded-lg">
-              <div className="divide-y divide-gray-200">
-                {userMessages.map((message) => (
-                  <div key={message.id} className={`p-6 hover:bg-gray-50 ${message.unread ? 'bg-blue-50' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <p className="text-sm font-medium text-gray-900">{message.from}</p>
-                          {message.unread && (
-                            <span className="ml-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">New</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-900 mt-1">{message.subject}</p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {message.date?.toDate ? message.date.toDate().toLocaleDateString() : 'N/A'}
-                        </p>
-                      </div>
-                      <MessageSquare className="h-5 w-5 text-gray-400" />
-                    </div>
-                  </div>
-                ))}
-                {userMessages.length === 0 && (
-                  <div className="p-6 text-center text-sm text-gray-500">
-                    No messages yet
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'appointments' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Appointments</h2>
-            <div className="bg-white shadow rounded-lg p-6">
-              <div className="text-center">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Appointment scheduling coming soon!</p>
-                <p className="text-sm text-gray-400 mt-2">
-                  Please call (818) 291-6217 to schedule an appointment
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'billing' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Billing & Payments</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Make a Payment</h3>
-                <StripePayment 
-                  user={user}
-                  onSuccess={(amount) => {
-                    // Reload user data to update payment history
-                    loadUserData(user.uid);
-                  }}
-                />
-              </div>
-              
-              <div className="bg-white shadow rounded-lg p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment History</h3>
-                <div className="space-y-3">
-                  {/* This would show actual payment history from Firestore */}
-                  <div className="text-center py-8">
-                    <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">No payment history yet</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'profile' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h2>
-            
-            <div className="bg-white shadow rounded-lg">
-              <div className="p-6 space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
-                  <div className="space-y-4">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <Folder className="h-10 w-10 text-blue-600 mr-4" />
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Email</label>
-                      <p className="mt-1 text-sm text-gray-900">{user?.email}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">User ID</label>
-                      <p className="mt-1 text-sm text-gray-900">{user?.uid}</p>
+                      <p className="text-sm text-gray-600">Active Matters</p>
+                      <p className="text-2xl font-semibold">{userMatters.filter(m => m.status === 'Active').length}</p>
                     </div>
                   </div>
                 </div>
                 
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Security</h3>
-                  <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                    Change Password
-                  </button>
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <FileText className="h-10 w-10 text-green-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Documents</p>
+                      <p className="text-2xl font-semibold">{userDocuments.length}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <MessageSquare className="h-10 w-10 text-purple-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Unread Messages</p>
+                      <p className="text-2xl font-semibold">{userMessages.filter(m => m.unread).length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Matters */}
+              <div className="bg-white rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Your Matters</h3>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {userMatters.map((matter) => (
+                      <div key={matter.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900">{matter.title}</h4>
+                          <p className="text-sm text-gray-500">{matter.type}</p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          matter.status === 'Active' ? 'bg-green-100 text-green-800' :
+                          matter.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {matter.status}
+                        </span>
+                      </div>
+                    ))}
+                    {userMatters.length === 0 && (
+                      <p className="text-sm text-gray-500 text-center">No active matters</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Footer */}
-      <div className="lg:ml-64 p-4 lg:p-8">
-        <div className="mt-8 pt-8 border-t border-gray-200">
-          <div className="text-center text-sm text-gray-600">
-            <p className="font-medium">Law Offices of Rozsa Gyene</p>
-            <p>450 N Brand Blvd. Suite 600, Glendale, CA 91203</p>
-            <p>Phone: (818) 291-6217 | Email: rozsagyenelaw@yahoo.com</p>
-          </div>
+          )}
+
+          {/* Documents */}
+          {activeTab === 'documents' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Documents</h2>
+              
+              <div className="bg-white shadow rounded-lg">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Document Library</h3>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {userDocuments.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div className="flex items-center">
+                          <FileText className="h-8 w-8 text-gray-400 mr-4" />
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900">{doc.name}</h4>
+                            <p className="text-sm text-gray-500">
+                              Uploaded {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <span className="text-sm text-gray-500">{doc.size}</span>
+                          <a 
+                            href={doc.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Download className="h-5 w-5" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                    {userDocuments.length === 0 && (
+                      <p className="text-center text-gray-500">No documents uploaded yet</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {activeTab === 'messages' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
+              
+              <div className="bg-white shadow rounded-lg">
+                <div className="divide-y divide-gray-200">
+                  {userMessages.map((message) => (
+                    <div key={message.id} className={`p-6 ${message.unread ? 'bg-blue-50' : ''}`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-gray-900">{message.subject}</h4>
+                            <span className="text-sm text-gray-500">
+                              {message.date?.toDate ? message.date.toDate().toLocaleDateString() : 'Recently'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">From: {message.from}</p>
+                          <p className="text-sm text-gray-700 mt-2">{message.message}</p>
+                        </div>
+                        {message.unread && (
+                          <span className="ml-4 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                            New
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {userMessages.length === 0 && (
+                    <div className="p-6 text-center text-gray-500">
+                      No messages yet
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Billing */}
+          {activeTab === 'billing' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Billing & Payments</h2>
+              
+              <div className="bg-white shadow rounded-lg p-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Options</h3>
+                <p className="text-gray-600 mb-6">Choose your preferred payment method for our services.</p>
+                
+                <StripePayment />
+              </div>
+            </div>
+          )}
+
+          {/* Account Settings */}
+          {activeTab === 'settings' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Settings</h2>
+              
+              {/* Profile Information */}
+              <div className="bg-white shadow rounded-lg mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Profile Information</h3>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">First Name</label>
+                      <input
+                        type="text"
+                        value={userProfile?.firstName || ''}
+                        readOnly
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                      <input
+                        type="text"
+                        value={userProfile?.lastName || ''}
+                        readOnly
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                      <input
+                        type="email"
+                        value={user.email}
+                        readOnly
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Phone</label>
+                      <input
+                        type="tel"
+                        value={userProfile?.phone || ''}
+                        readOnly
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm text-gray-500">
+                    To update your profile information, please contact our office.
+                  </p>
+                </div>
+              </div>
+
+              {/* Change Password */}
+              <div className="bg-white shadow rounded-lg">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Change Password</h3>
+                </div>
+                <div className="p-6">
+                  {passwordChangeMessage && (
+                    <div className="mb-4 bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded relative">
+                      <CheckCircle className="h-5 w-5 inline mr-2" />
+                      {passwordChangeMessage}
+                    </div>
+                  )}
+                  
+                  {passwordChangeError && (
+                    <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded relative">
+                      <AlertCircle className="h-5 w-5 inline mr-2" />
+                      {passwordChangeError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Current Password</label>
+                      <div className="mt-1 relative">
+                        <input
+                          type={showCurrentPassword ? "text" : "password"}
+                          value={passwordChangeData.currentPassword}
+                          onChange={(e) => setPasswordChangeData({...passwordChangeData, currentPassword: e.target.value})}
+                          required
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        >
+                          {showCurrentPassword ? 
+                            <EyeOff className="h-5 w-5 text-gray-400" /> : 
+                            <Eye className="h-5 w-5 text-gray-400" />
+                          }
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">New Password</label>
+                      <div className="mt-1 relative">
+                        <input
+                          type={showNewPassword ? "text" : "password"}
+                          value={passwordChangeData.newPassword}
+                          onChange={(e) => setPasswordChangeData({...passwordChangeData, newPassword: e.target.value})}
+                          required
+                          minLength={6}
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        >
+                          {showNewPassword ? 
+                            <EyeOff className="h-5 w-5 text-gray-400" /> : 
+                            <Eye className="h-5 w-5 text-gray-400" />
+                          }
+                        </button>
+                      </div>
+                      <p className="mt-1 text-sm text-gray-500">Must be at least 6 characters</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={passwordChangeData.confirmPassword}
+                        onChange={(e) => setPasswordChangeData({...passwordChangeData, confirmPassword: e.target.value})}
+                        required
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="pt-4">
+                      <button
+                        type="submit"
+                        className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        <Lock className="h-4 w-4 mr-2" />
+                        Update Password
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-
-  return user ? <Dashboard /> : <LoginForm />;
 };
 
 export default ClientPortal;
