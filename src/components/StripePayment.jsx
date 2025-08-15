@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
-import { CreditCard, DollarSign, Check, AlertCircle } from 'lucide-react';
+import { CreditCard, DollarSign, Check, AlertCircle, Shield } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db, STRIPE_PUBLISHABLE_KEY } from '../firebase';
 
