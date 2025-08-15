@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
-import { CreditCard, DollarSign, Check, AlertCircle, Shield } from 'lucide-react';
+import { CreditCard, DollarSign, Check, AlertCircle, Shield, ExternalLink } from 'lucide-react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db, STRIPE_PUBLISHABLE_KEY } from '../firebase';
 
@@ -32,56 +32,74 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
     setError('');
 
     try {
-      // In a real implementation, you would:
-      // 1. Call your backend to create a PaymentIntent
-      // 2. Use Stripe Elements to collect card details
-      // 3. Confirm the payment
-      
-      // For now, we'll show a placeholder that demonstrates the flow
       const stripe = await stripePromise;
       
-      // Simulate payment processing
-      setTimeout(async () => {
+      // For production, you need to:
+      // 1. Create a backend endpoint that creates a Stripe Checkout Session
+      // 2. Call that endpoint to get a session ID
+      // 3. Redirect to Stripe Checkout
+      
+      // Since we don't have a backend yet, we'll use Stripe Payment Links
+      // You need to create payment links in your Stripe Dashboard
+      
+      // For now, show an alert with instructions
+      alert(`To complete payment:
+      
+1. Amount: $${customAmount}
+2. This is a demo - in production, you'll be redirected to Stripe Checkout
+3. To set up real payments:
+   - Create a backend endpoint for Stripe Checkout Sessions
+   - Or use Stripe Payment Links for quick setup
+   
+Would you like to proceed with a test payment?`);
+
+      // Simulate successful payment for demo
+      const proceed = window.confirm('Simulate successful payment for demo purposes?');
+      
+      if (proceed) {
         // Record the payment in Firestore
         await addDoc(collection(db, 'payments'), {
           userId: user.uid,
           amount: parseFloat(customAmount),
           description: description || 'Legal Services Payment',
-          status: 'pending', // In real implementation, this would be updated by Stripe webhook
+          status: 'demo_payment', // Mark as demo
           paymentMethod: paymentMethod,
           createdAt: serverTimestamp()
         });
 
         setSuccess(true);
-        setLoading(false);
         
         if (onSuccess) {
           onSuccess(parseFloat(customAmount));
         }
-      }, 2000);
-
-      // In production, you would redirect to Stripe Checkout or use Elements
-      // Example:
-      // const { error } = await stripe.redirectToCheckout({
-      //   lineItems: [{ price: 'price_1234', quantity: 1 }],
-      //   mode: 'payment',
-      //   successUrl: window.location.origin + '/success',
-      //   cancelUrl: window.location.origin + '/cancel',
-      // });
+      }
+      
+      setLoading(false);
 
     } catch (err) {
-      setError('Payment failed. Please try again.');
+      setError('Payment setup failed. Please try again.');
       setLoading(false);
     }
+  };
+
+  const handleStripeCheckout = () => {
+    // Direct link to your Stripe payment page
+    // You can create different payment links for different amounts in Stripe Dashboard
+    const stripePaymentLink = 'https://buy.stripe.com/test_XXXXXXXXX'; // Replace with your actual payment link
+    
+    window.open(stripePaymentLink, '_blank');
   };
 
   if (success) {
     return (
       <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
         <Check className="h-12 w-12 text-green-600 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Payment Successful!</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Payment Recorded!</h3>
         <p className="text-gray-600">
-          Thank you for your payment of ${customAmount}. You will receive a receipt via email.
+          This was a demo payment of ${customAmount}. 
+        </p>
+        <p className="text-sm text-gray-500 mt-2">
+          In production, you'll receive a receipt via email after completing payment through Stripe.
         </p>
       </div>
     );
@@ -166,35 +184,52 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
         </div>
       )}
 
-      {/* Payment notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
-          <strong>Note:</strong> This is a secure payment demo. In production, you'll be redirected to Stripe's secure checkout page to complete your payment.
-        </p>
+      {/* Payment options */}
+      <div className="space-y-3">
+        {/* Demo button */}
+        <button
+          onClick={handlePayment}
+          disabled={loading || !customAmount}
+          className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+            loading || !customAmount
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+          }`}
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Processing...
+            </>
+          ) : (
+            `Demo Payment - $${customAmount || '0.00'}`
+          )}
+        </button>
+
+        {/* Real Stripe button - uncomment when you have payment links */}
+        {/* <button
+          onClick={handleStripeCheckout}
+          className="w-full flex justify-center items-center py-3 px-4 border border-blue-900 rounded-md shadow-sm text-sm font-medium text-blue-900 bg-white hover:bg-gray-50"
+        >
+          Pay with Stripe
+          <ExternalLink className="ml-2 h-4 w-4" />
+        </button> */}
       </div>
 
-      {/* Submit button */}
-      <button
-        onClick={handlePayment}
-        disabled={loading || !customAmount}
-        className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-          loading || !customAmount
-            ? 'bg-gray-400 cursor-not-allowed'
-            : 'bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-        }`}
-      >
-        {loading ? (
-          <>
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Processing...
-          </>
-        ) : (
-          `Pay $${customAmount || '0.00'}`
-        )}
-      </button>
+      {/* Payment notice */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <p className="text-sm text-yellow-800">
+          <strong>Demo Mode:</strong> This is currently in demo mode. To enable real payments:
+        </p>
+        <ol className="mt-2 ml-4 text-sm text-yellow-700 list-decimal">
+          <li>Create Stripe Payment Links in your Stripe Dashboard</li>
+          <li>Or set up a backend server to create Stripe Checkout Sessions</li>
+          <li>Update this component with your payment link URLs</li>
+        </ol>
+      </div>
 
       {/* Security badges */}
       <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
