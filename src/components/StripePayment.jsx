@@ -104,7 +104,14 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
           {commonAmounts.map((item) => (
             <button
               key={item.label}
-              onClick={() => setCustomAmount(item.amount.toString())}
+              onClick={() => {
+                if (item.amount === 0) {
+                  // Direct redirect for free consultation
+                  window.location.href = 'https://square.site/book/0W2A8PKKPYC21/law-offices-of-rozsa-gyene-glendale-ca';
+                } else {
+                  setCustomAmount(item.amount.toString());
+                }
+              }}
               className={`p-3 border rounded-lg text-left transition-colors ${
                 customAmount === item.amount.toString()
                   ? 'border-blue-500 bg-blue-50'
@@ -113,7 +120,7 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
             >
               <p className="text-sm font-medium text-gray-900">{item.label}</p>
               <p className="text-lg font-semibold text-gray-700">
-                {item.amount === 0 ? 'Free' : `$${item.amount}`}
+                {item.amount === 0 ? 'Free - Schedule Now' : `${item.amount}`}
               </p>
             </button>
           ))}
