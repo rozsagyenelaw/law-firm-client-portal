@@ -16,10 +16,36 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
 
   // Common payment amounts for estate planning services
   const commonAmounts = [
-    { label: 'Initial Consultation', amount: 0 },
-    { label: 'Simple Will', amount: 250 },
-    { label: 'Living Trust (Single)', amount: 575 },
-    { label: 'Living Trust (Joint)', amount: 675 },
+    { 
+      label: 'Initial Consultation', 
+      amount: 0,
+      paymentLink: null 
+    },
+    { 
+      label: 'Trust Amendment', 
+      amount: 150,
+      paymentLink: 'https://buy.stripe.com/eVqcN6evT5lq4lCai83Nm03'
+    },
+    { 
+      label: 'Single Will', 
+      amount: 250,
+      paymentLink: 'https://buy.stripe.com/fZu14odrP29ebO4gGw3Nm08'
+    },
+    { 
+      label: 'Joint Will', 
+      amount: 350,
+      paymentLink: 'https://buy.stripe.com/3cI8wQ2Nb3di19q3TK3Nm09'
+    },
+    { 
+      label: 'Living Trust (Single)', 
+      amount: 575,
+      paymentLink: 'https://buy.stripe.com/9B65kE9bz6puf0g0Hy3Nm00'
+    },
+    { 
+      label: 'Living Trust (Joint)', 
+      amount: 675,
+      paymentLink: 'https://buy.stripe.com/bJeeVe0F3eW0g4k61S3Nm02'
+    },
   ];
 
   const handlePayment = async () => {
@@ -30,7 +56,8 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
 
     // Handle free consultation
     if (parseFloat(customAmount) === 0) {
-      alert('Initial consultations are free! Please contact us at (818) 291-6217 to schedule your appointment.');
+      // Redirect to Square booking page for free consultation
+      window.location.href = 'https://square.site/book/0W2A8PKKPYC21/law-offices-of-rozsa-gyene-glendale-ca';
       return;
     }
 
@@ -38,49 +65,17 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
     setError('');
 
     try {
-      const stripe = await stripePromise;
+      // Find if there's a payment link for this amount
+      const selectedService = commonAmounts.find(item => item.amount === parseFloat(customAmount));
       
-      // For production, you need to:
-      // 1. Create a backend endpoint that creates a Stripe Checkout Session
-      // 2. Call that endpoint to get a session ID
-      // 3. Redirect to Stripe Checkout
-      
-      // Since we don't have a backend yet, we'll use Stripe Payment Links
-      // You need to create payment links in your Stripe Dashboard
-      
-      // For now, show an alert with instructions
-      alert(`To complete payment:
-      
-1. Amount: $${customAmount}
-2. This is a demo - in production, you'll be redirected to Stripe Checkout
-3. To set up real payments:
-   - Create a backend endpoint for Stripe Checkout Sessions
-   - Or use Stripe Payment Links for quick setup
-   
-Would you like to proceed with a test payment?`);
-
-      // Simulate successful payment for demo
-      const proceed = window.confirm('Simulate successful payment for demo purposes?');
-      
-      if (proceed) {
-        // Record the payment in Firestore
-        await addDoc(collection(db, 'payments'), {
-          userId: user.uid,
-          amount: parseFloat(customAmount),
-          description: description || 'Legal Services Payment',
-          status: 'demo_payment', // Mark as demo
-          paymentMethod: paymentMethod,
-          createdAt: serverTimestamp()
-        });
-
-        setSuccess(true);
-        
-        if (onSuccess) {
-          onSuccess(parseFloat(customAmount));
-        }
+      if (selectedService && selectedService.paymentLink) {
+        // Redirect to the specific Stripe payment link
+        window.location.href = selectedService.paymentLink;
+      } else {
+        // For custom amounts, show a message
+        alert(`For custom amount payments of $${customAmount}, please contact our office at (818) 291-6217 or email rozsagyenelaw@yahoo.com to arrange payment.`);
+        setLoading(false);
       }
-      
-      setLoading(false);
 
     } catch (err) {
       setError('Payment setup failed. Please try again.');
@@ -88,24 +83,13 @@ Would you like to proceed with a test payment?`);
     }
   };
 
-  const handleStripeCheckout = () => {
-    // Direct link to your Stripe payment page
-    // You can create different payment links for different amounts in Stripe Dashboard
-    const stripePaymentLink = 'https://buy.stripe.com/test_XXXXXXXXX'; // Replace with your actual payment link
-    
-    window.open(stripePaymentLink, '_blank');
-  };
-
   if (success) {
     return (
       <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
         <Check className="h-12 w-12 text-green-600 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Payment Recorded!</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Payment Initiated!</h3>
         <p className="text-gray-600">
-          This was a demo payment of ${customAmount}. 
-        </p>
-        <p className="text-sm text-gray-500 mt-2">
-          In production, you'll receive a receipt via email after completing payment through Stripe.
+          You have been redirected to our secure payment page.
         </p>
       </div>
     );
@@ -113,9 +97,24 @@ Would you like to proceed with a test payment?`);
 
   return (
     <div className="space-y-6">
-      {/* Quick amount selection */}
+      {/* Security badges */}
+      <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
+        <div className="flex items-center">
+          <Shield className="h-4 w-4 mr-1" />
+          <span>Secure Payment</span>
+        </div>
+        <div className="flex items-center">
+          <CreditCard className="h-4 w-4 mr-1" />
+          <span>Powered by Stripe</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default StripePayment;/* Quick amount selection */}
       <div>
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Select Service or Enter Custom Amount</h4>
+        <h4 className="text-sm font-medium text-gray-700 mb-3">Select Service</h4>
         <div className="grid grid-cols-2 gap-3">
           {commonAmounts.map((item) => (
             <button
@@ -128,7 +127,9 @@ Would you like to proceed with a test payment?`);
               }`}
             >
               <p className="text-sm font-medium text-gray-900">{item.label}</p>
-              <p className="text-lg font-semibold text-gray-700">${item.amount}</p>
+              <p className="text-lg font-semibold text-gray-700">
+                {item.amount === 0 ? 'Free' : `$${item.amount}`}
+              </p>
             </button>
           ))}
         </div>
@@ -137,7 +138,7 @@ Would you like to proceed with a test payment?`);
       {/* Custom amount input */}
       <div>
         <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
-          Payment Amount
+          Custom Amount (for Trust Administration or other services)
         </label>
         <div className="relative">
           <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -154,32 +155,15 @@ Would you like to proceed with a test payment?`);
         </div>
       </div>
 
-      {/* Payment method selection */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-3">Payment Method</label>
-        <div className="space-y-2">
-          <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-            <input
-              type="radio"
-              value="card"
-              checked={paymentMethod === 'card'}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mr-3"
-            />
-            <CreditCard className="h-5 w-5 text-gray-600 mr-2" />
-            <span className="text-gray-700">Credit/Debit Card</span>
-          </label>
-          <label className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-            <input
-              type="radio"
-              value="ach"
-              checked={paymentMethod === 'ach'}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="mr-3"
-            />
-            <span className="text-gray-700">Bank Transfer (ACH)</span>
-          </label>
+      {/* Payment method info */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center mb-2">
+          <CreditCard className="h-5 w-5 text-gray-600 mr-2" />
+          <span className="text-sm font-medium text-gray-700">Accepted Payment Methods</span>
         </div>
+        <p className="text-sm text-gray-600">
+          Credit Card, Debit Card, Apple Pay, Google Pay
+        </p>
       </div>
 
       {/* Error message */}
@@ -190,66 +174,30 @@ Would you like to proceed with a test payment?`);
         </div>
       )}
 
-      {/* Payment options */}
-      <div className="space-y-3">
-        {/* Demo button */}
-        <button
-          onClick={handlePayment}
-          disabled={loading || !customAmount}
-          className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-            loading || !customAmount
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-          }`}
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Processing...
-            </>
-          ) : (
-            `Demo Payment - $${customAmount || '0.00'}`
-          )}
-        </button>
+      {/* Submit button */}
+      <button
+        onClick={handlePayment}
+        disabled={loading || !customAmount}
+        className={`w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+          loading || !customAmount
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+        }`}
+      >
+        {loading ? (
+          <>
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Processing...
+          </>
+        ) : (
+          <>
+            Pay $<>{customAmount || '0.00'} with Stripe
+            <ExternalLink className="ml-2 h-4 w-4" />
+          </>
+        )}
+      </button>
 
-        {/* Real Stripe button - uncomment when you have payment links */}
-        {/* <button
-          onClick={handleStripeCheckout}
-          className="w-full flex justify-center items-center py-3 px-4 border border-blue-900 rounded-md shadow-sm text-sm font-medium text-blue-900 bg-white hover:bg-gray-50"
-        >
-          Pay with Stripe
-          <ExternalLink className="ml-2 h-4 w-4" />
-        </button> */}
-      </div>
-
-      {/* Payment notice */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Demo Mode:</strong> This is currently in demo mode. To enable real payments:
-        </p>
-        <ol className="mt-2 ml-4 text-sm text-yellow-700 list-decimal">
-          <li>Create Stripe Payment Links in your Stripe Dashboard</li>
-          <li>Or set up a backend server to create Stripe Checkout Sessions</li>
-          <li>Update this component with your payment link URLs</li>
-        </ol>
-      </div>
-
-      {/* Security badges */}
-      <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
-        <div className="flex items-center">
-          <Shield className="h-4 w-4 mr-1" />
-          <span>Secure Payment</span>
-        </div>
-        <div className="flex items-center">
-          <CreditCard className="h-4 w-4 mr-1" />
-          <span>Powered by Stripe</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default StripePayment;
+      {
