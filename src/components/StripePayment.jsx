@@ -97,22 +97,7 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
 
   return (
     <div className="space-y-6">
-      {/* Security badges */}
-      <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
-        <div className="flex items-center">
-          <Shield className="h-4 w-4 mr-1" />
-          <span>Secure Payment</span>
-        </div>
-        <div className="flex items-center">
-          <CreditCard className="h-4 w-4 mr-1" />
-          <span>Powered by Stripe</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default StripePayment;/* Quick amount selection */}
+      {/* Quick amount selection */}
       <div>
         <h4 className="text-sm font-medium text-gray-700 mb-3">Select Service</h4>
         <div className="grid grid-cols-2 gap-3">
@@ -194,10 +179,25 @@ export default StripePayment;/* Quick amount selection */}
           </>
         ) : (
           <>
-            Pay $<>{customAmount || '0.00'} with Stripe
+            Pay ${customAmount || '0.00'} with Stripe
             <ExternalLink className="ml-2 h-4 w-4" />
           </>
         )}
       </button>
 
-      {
+      {/* Security badges */}
+      <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
+        <div className="flex items-center">
+          <Shield className="h-4 w-4 mr-1" />
+          <span>Secure Payment</span>
+        </div>
+        <div className="flex items-center">
+          <CreditCard className="h-4 w-4 mr-1" />
+          <span>Powered by Stripe</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default StripePayment;
