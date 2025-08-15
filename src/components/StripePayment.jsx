@@ -16,15 +16,21 @@ const StripePayment = ({ user, amount, description, onSuccess }) => {
 
   // Common payment amounts for estate planning services
   const commonAmounts = [
-    { label: 'Initial Consultation', amount: 500 },
-    { label: 'Simple Will', amount: 1500 },
-    { label: 'Living Trust Package', amount: 3500 },
-    { label: 'Trust Administration', amount: 5000 },
+    { label: 'Initial Consultation', amount: 0 },
+    { label: 'Simple Will', amount: 250 },
+    { label: 'Living Trust (Single)', amount: 575 },
+    { label: 'Living Trust (Joint)', amount: 675 },
   ];
 
   const handlePayment = async () => {
-    if (!customAmount || parseFloat(customAmount) <= 0) {
+    if (!customAmount || parseFloat(customAmount) < 0) {
       setError('Please enter a valid amount');
+      return;
+    }
+
+    // Handle free consultation
+    if (parseFloat(customAmount) === 0) {
+      alert('Initial consultations are free! Please contact us at (818) 291-6217 to schedule your appointment.');
       return;
     }
 
