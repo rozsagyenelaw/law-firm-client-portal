@@ -69,16 +69,18 @@ const ClientPortal = () => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user);
-        setIsAdmin(ADMIN_EMAILS.includes(user.email));
+        const userIsAdmin = ADMIN_EMAILS.includes(user.email);
+        setIsAdmin(userIsAdmin);
         
-        // Load user profile
-        const userQuery = query(collection(db, 'users'), where('email', '==', user.email));
-        const userSnapshot = await getDocs(userQuery);
-        if (!userSnapshot.empty) {
-          setUserProfile({ id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() });
+        // Only load user profile if not admin
+        if (!userIsAdmin) {
+          const userQuery = query(collection(db, 'users'), where('email', '==', user.email));
+          const userSnapshot = await getDocs(userQuery);
+          if (!userSnapshot.empty) {
+            setUserProfile({ id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() });
+          }
+          await loadUserData(user);
         }
-        
-        await loadUserData(user);
       } else {
         setUser(null);
         setIsAdmin(false);
@@ -232,32 +234,6 @@ const ClientPortal = () => {
     setActiveTab('dashboard');
   };
 
-  // If accessing /admin route, show admin dashboard for logged in admins
-  if (isAdminRoute) {
-    if (loading) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <Shield className="h-12 w-12 text-blue-900 animate-pulse mx-auto mb-4" />
-            <p className="text-gray-600">Loading...</p>
-          </div>
-        </div>
-      );
-    }
-    
-    if (user && isAdmin) {
-      return <AdminDashboard />;
-    }
-    
-    // If not logged in or not admin, redirect to main portal
-    if (!loading && (!user || !isAdmin)) {
-      window.location.href = '/';
-      return null;
-    }
-  }
-
-  // Regular client portal logic continues below...
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -268,6 +244,20 @@ const ClientPortal = () => {
       </div>
     );
   }
+
+  // Handle admin routing
+  if (isAdminRoute && user && isAdmin) {
+    return <AdminDashboard />;
+  }
+
+  // Redirect non-admins away from /admin
+  if (isAdminRoute && user && !isAdmin) {
+    window.location.href = '/';
+    return null;
+  }
+
+  // Don't redirect admins from client portal - let them access it if they want
+  // Remove the auto-redirect that was causing issues
 
   if (!user) {
     return (
