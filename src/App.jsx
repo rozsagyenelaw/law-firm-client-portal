@@ -72,7 +72,7 @@ const ClientPortal = () => {
         const userIsAdmin = ADMIN_EMAILS.includes(user.email);
         setIsAdmin(userIsAdmin);
         
-        // Only load user profile if not admin
+        // Only load user profile and data for non-admin users
         if (!userIsAdmin) {
           const userQuery = query(collection(db, 'users'), where('email', '==', user.email));
           const userSnapshot = await getDocs(userQuery);
@@ -191,6 +191,7 @@ const ClientPortal = () => {
     
     try {
       await signInWithEmailAndPassword(auth, formData.get('email'), formData.get('password'));
+      // Don't redirect - let the auth state change handler deal with routing
     } catch (error) {
       setError('Invalid email or password');
     }
@@ -245,19 +246,20 @@ const ClientPortal = () => {
     );
   }
 
-  // Handle admin routing
-  if (isAdminRoute && user && isAdmin) {
-    return <AdminDashboard />;
+  // IMPORTANT: Check admin route FIRST before showing login
+  if (isAdminRoute) {
+    if (user && isAdmin) {
+      // Show admin dashboard
+      return <AdminDashboard />;
+    } else if (user && !isAdmin) {
+      // Non-admin trying to access admin route
+      window.location.href = '/';
+      return null;
+    }
+    // If not logged in, fall through to show login page
   }
 
-  // Redirect non-admins away from /admin
-  if (isAdminRoute && user && !isAdmin) {
-    window.location.href = '/';
-    return null;
-  }
-
-  // Don't redirect admins from client portal - let them access it if they want
-  // Remove the auto-redirect that was causing issues
+  // For non-admin routes, if user is admin, they can still see client portal if they want
 
   if (!user) {
     return (
@@ -508,6 +510,15 @@ const ClientPortal = () => {
             <div className="text-blue-200 text-sm mb-4">
               {userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}
             </div>
+            {isAdmin && !isAdminRoute && (
+              <a
+                href="/admin"
+                className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors mb-2"
+              >
+                <Shield className="h-5 w-5 mr-3" />
+                Admin Dashboard
+              </a>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
