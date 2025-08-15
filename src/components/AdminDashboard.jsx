@@ -484,12 +484,15 @@ const AdminDashboard = () => {
             </div>
 
             {/* Client Details Modal */}
-            {selectedClient && (
+            {showClientDetails && selectedClient && (
               <div className="bg-white rounded-lg shadow mb-6 p-6">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-lg font-medium text-gray-900">Client Details</h3>
                   <button
-                    onClick={() => setSelectedClient(null)}
+                    onClick={() => {
+                      setShowClientDetails(false);
+                      setSelectedClient(null);
+                    }}
                     className="text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-5 w-5" />
@@ -513,11 +516,26 @@ const AdminDashboard = () => {
                     <p className="text-sm text-gray-600">Address</p>
                     <p className="font-medium">{selectedClient.address || 'Not provided'}</p>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Created</p>
+                    <p className="font-medium">
+                      {selectedClient.createdAt?.toDate ? 
+                        selectedClient.createdAt.toDate().toLocaleDateString() : 
+                        'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Matters</p>
+                    <p className="font-medium">
+                      {matters.filter(m => m.clientId === selectedClient.uid || m.clientId === selectedClient.id).length} active
+                    </p>
+                  </div>
                 </div>
                 
                 <div className="mt-6 flex space-x-3">
                   <button
                     onClick={() => {
+                      setShowClientDetails(false);
                       setActiveTab('documents');
                     }}
                     className="px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
@@ -526,11 +544,21 @@ const AdminDashboard = () => {
                   </button>
                   <button
                     onClick={() => {
+                      setShowClientDetails(false);
                       setActiveTab('messages');
                     }}
                     className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                   >
                     View Messages
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowClientDetails(false);
+                      setSelectedClient(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
                   </button>
                 </div>
               </div>
@@ -693,7 +721,7 @@ const AdminDashboard = () => {
                         <button
                           onClick={() => {
                             setSelectedClient(client);
-                            setActiveTab('documents');
+                            setShowClientDetails(true);
                           }}
                           className="text-blue-600 hover:text-blue-900 mr-3"
                         >
