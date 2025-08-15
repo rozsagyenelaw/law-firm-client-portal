@@ -6,12 +6,12 @@ import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDhwG6_wonaWEaC4S4GlNYm4jwHoBKG_hI",
-  authDomain: "livingtrust-california.firebaseapp.com",
-  projectId: "livingtrust-california",
-  storageBucket: "livingtrust-california.firebasestorage.app",
-  messagingSenderId: "444189733421",
-  appId: "1:444189733421:web:290715daa988c4329dbea4"
+  apiKey: "AIzaSyDvpy1J7FggY2nA07F5oSX5wIWLj1vLgaQ",
+  authDomain: "law-firm-client-portal.firebaseapp.com",
+  projectId: "law-firm-client-portal",
+  storageBucket: "law-firm-client-portal.firebasestorage.app",
+  messagingSenderId: "1012595229",
+  appId: "1:1012595229:web:2ba56185a9eefba5d0a4f4"
 };
 
 // Initialize Firebase
