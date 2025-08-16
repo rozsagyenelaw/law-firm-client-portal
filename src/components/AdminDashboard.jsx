@@ -323,10 +323,12 @@ const AdminDashboard = () => {
       }
       
       const clientName = `${client.firstName} ${client.lastName}`;
+      // Use the client's uid (or id if uid doesn't exist)
+      const clientUid = client.uid || client.id;
 
       // Upload file to Firebase Storage
       const timestamp = new Date().getTime();
-      const fileName = `${uploadClient}/${uploadCategory}/${timestamp}_${uploadFile.name}`;
+      const fileName = `${clientUid}/${uploadCategory}/${timestamp}_${uploadFile.name}`;
       const storageRef = ref(storage, `documents/${fileName}`);
       
       setUploadProgress(30);
@@ -337,14 +339,14 @@ const AdminDashboard = () => {
       
       setUploadProgress(80);
 
-      // Save document info to Firestore
+      // Save document info to Firestore - use clientUid for consistency
       await addDoc(collection(db, 'documents'), {
         name: uploadFile.name,
         category: uploadCategory,
         url: downloadURL,
         size: `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB`,
         uploadDate: serverTimestamp(),
-        clientId: uploadClient,
+        clientId: clientUid, // This ensures consistency with how documents are queried
         clientName: clientName,
         uploadedBy: adminUser.email
       });
