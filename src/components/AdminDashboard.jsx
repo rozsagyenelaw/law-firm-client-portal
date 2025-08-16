@@ -725,17 +725,27 @@ const AdminDashboard = () => {
                         </div>
                         <div className="flex items-center space-x-4">
                           <span className="text-sm text-gray-500">{doc.size}</span>
-                          <a 
-                            href={doc.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800"
+                          <button
+                            onClick={() => {
+                              console.log('Downloading document:', doc.name);
+                              console.log('URL:', doc.url);
+                              if (doc.url) {
+                                window.open(doc.url, '_blank');
+                              } else {
+                                alert('Download URL not available');
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-800 p-2 rounded hover:bg-blue-50"
+                            title="Download document"
                           >
                             <Download className="h-5 w-5" />
-                          </a>
+                          </button>
                         </div>
                       </div>
                     ))}
+                    {documents.length === 0 && (
+                      <p className="text-center text-gray-500">No documents uploaded yet</p>
+                    )}
                   </div>
                 </div>
               </div>
