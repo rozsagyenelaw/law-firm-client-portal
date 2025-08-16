@@ -86,6 +86,17 @@ const AdminDashboard = () => {
   // View client modal
   const [showViewModal, setShowViewModal] = useState(false);
   const [viewingClient, setViewingClient] = useState(null);
+  
+  // Edit client modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
+  const [editClientData, setEditClientData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
 
   // Admin emails that are allowed to access the dashboard
   const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
@@ -358,6 +369,41 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleEditClient = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Update client in Firestore
+      await updateDoc(doc(db, 'users', editingClient.id), {
+        firstName: editClientData.firstName,
+        lastName: editClientData.lastName,
+        email: editClientData.email,
+        phone: editClientData.phone,
+        address: editClientData.address,
+        updatedAt: serverTimestamp()
+      });
+      
+      // Reset form
+      setEditClientData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        address: ''
+      });
+      setShowEditModal(false);
+      setEditingClient(null);
+      
+      // Reload data
+      await loadDashboardData();
+      
+      alert('Client updated successfully!');
+    } catch (error) {
+      console.error('Error updating client:', error);
+      alert('Error updating client: ' + error.message);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -622,7 +668,17 @@ const AdminDashboard = () => {
                               View
                             </button>
                             <button 
-                              onClick={() => alert('Edit feature coming soon!')}
+                              onClick={() => {
+                                setEditingClient(client);
+                                setEditClientData({
+                                  firstName: client.firstName,
+                                  lastName: client.lastName,
+                                  email: client.email,
+                                  phone: client.phone,
+                                  address: client.address || ''
+                                });
+                                setShowEditModal(true);
+                              }}
                               className="text-gray-600 hover:text-gray-900"
                             >
                               Edit
@@ -1155,6 +1211,95 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {showEditModal && editingClient && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Edit Client</h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditClient} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">First Name</label>
+                <input
+                  type="text"
+                  value={editClientData.firstName}
+                  onChange={(e) => setEditClientData({...editClientData, firstName: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                <input
+                  type="text"
+                  value={editClientData.lastName}
+                  onChange={(e) => setEditClientData({...editClientData, lastName: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  value={editClientData.email}
+                  onChange={(e) => setEditClientData({...editClientData, email: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <input
+                  type="tel"
+                  value={editClientData.phone}
+                  onChange={(e) => setEditClientData({...editClientData, phone: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Address</label>
+                <input
+                  type="text"
+                  value={editClientData.address}
+                  onChange={(e) => setEditClientData({...editClientData, address: e.target.value})}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
