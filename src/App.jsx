@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send } from 'lucide-react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send, PenTool } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -32,6 +32,7 @@ import { auth, db, storage } from './firebase';
 import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
 import Appointments from './components/Appointments';
+import DocumentSigning from './components/DocumentSigning';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -854,6 +855,14 @@ const ClientPortal = () => {
                         </div>
                         <div className="flex items-center space-x-4">
                           <span className="text-sm text-gray-500">{doc.size}</span>
+                          {/* Show signing button for unsigned documents */}
+                          {!doc.signed && doc.category === 'documents_to_sign' && (
+                            <DocumentSigning 
+                              document={doc} 
+                              user={user} 
+                              userProfile={userProfile} 
+                            />
+                          )}
                           <a 
                             href={doc.url} 
                             target="_blank" 
@@ -862,6 +871,12 @@ const ClientPortal = () => {
                           >
                             <Download className="h-5 w-5" />
                           </a>
+                          {doc.signed && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Signed
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
