@@ -194,25 +194,33 @@ const ClientPortal = () => {
 
       await addDoc(collection(db, 'documents'), docData);
 
-      // Send email notification to admin
-      const emailParams = {
-        to_email: 'rozsagyenelaw@yahoo.com',
-        client_name: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
-        client_email: user.email,
-        document_name: selectedFile.name,
-        category: selectedCategory,
-        upload_date: new Date().toLocaleDateString()
-      };
+      // Try to send email notification
+      try {
+        const emailParams = {
+          client_name: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+          document_name: selectedFile.name,
+          category: selectedCategory.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          upload_date: new Date().toLocaleDateString()
+        };
 
-      await emailjs.send(
-        'service_1y5vmr2',
-        'template_xcta2pl',
-        emailParams
-      );
+        // Send notification email
+        await emailjs.send(
+          'service_1y5vmr2',
+          'template_xcta2pl',  // Your client upload template
+          emailParams
+        );
+      } catch (emailError) {
+        console.error('Email notification failed:', emailError);
+        // Don't fail the entire upload if email fails
+      }
 
       setUploadSuccess('Document uploaded successfully!');
       setSelectedFile(null);
       setSelectedCategory('');
+      
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]');
+      if (fileInput) fileInput.value = '';
       
       // Reload documents
       await loadUserData(user);
