@@ -82,6 +82,10 @@ const AdminDashboard = () => {
   const [uploadClient, setUploadClient] = useState('');
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadCategory, setUploadCategory] = useState('');
+  
+  // View client modal
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingClient, setViewingClient] = useState(null);
 
   // Admin emails that are allowed to access the dashboard
   const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
@@ -598,10 +602,19 @@ const AdminDashboard = () => {
                             {client.createdAt?.toDate ? client.createdAt.toDate().toLocaleDateString() : 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button className="text-blue-600 hover:text-blue-900 mr-3">
+                            <button 
+                              onClick={() => {
+                                setViewingClient(client);
+                                setShowViewModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-900 mr-3"
+                            >
                               View
                             </button>
-                            <button className="text-gray-600 hover:text-gray-900">
+                            <button 
+                              onClick={() => alert('Edit feature coming soon!')}
+                              className="text-gray-600 hover:text-gray-900"
+                            >
                               Edit
                             </button>
                           </td>
@@ -1059,6 +1072,79 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Client Modal */}
+      {showViewModal && viewingClient && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Client Details</h3>
+              <button
+                onClick={() => setShowViewModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Name</label>
+                <p className="mt-1 text-sm text-gray-900">
+                  {viewingClient.firstName} {viewingClient.lastName}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <p className="mt-1 text-sm text-gray-900">{viewingClient.email}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <p className="mt-1 text-sm text-gray-900">{viewingClient.phone}</p>
+              </div>
+
+              {viewingClient.address && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Address</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingClient.address}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Created</label>
+                <p className="mt-1 text-sm text-gray-900">
+                  {viewingClient.createdAt?.toDate ? viewingClient.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                </p>
+              </div>
+
+              <div className="pt-4 flex space-x-3">
+                <button
+                  onClick={() => {
+                    setSelectedClient(viewingClient.uid);
+                    setActiveTab('documents');
+                    setShowViewModal(false);
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                >
+                  View Documents
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedClient(viewingClient.uid);
+                    setActiveTab('messages');
+                    setShowViewModal(false);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  View Messages
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
