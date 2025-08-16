@@ -110,9 +110,9 @@ const AdminDashboard = () => {
       const clientsSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
       const clientsData = clientsSnapshot.docs.map(doc => ({
         id: doc.id,
-        uid: doc.data().uid,
         ...doc.data()
       }));
+      console.log('Loaded clients:', clientsData); // Debug log
       setClients(clientsData);
 
       // Load matters
@@ -226,11 +226,13 @@ const AdminDashboard = () => {
     }
 
     console.log('Selected client ID:', selectedClient); // Debug log
+    console.log('Available clients:', clients); // Debug log to see client structure
 
     try {
       // Get client details - using document ID instead of uid
       const selectedClientData = clients.find(c => c.id === selectedClient);
       
+      console.log('Found client data:', selectedClientData); // Debug log
       if (!selectedClientData) {
         alert('Client not found. Please select a valid client.');
         return;
@@ -301,8 +303,14 @@ const AdminDashboard = () => {
     setUploadProgress(10);
 
     try {
-      // Get client info
-      const client = clients.find(c => c.uid === uploadClient);
+      // Get client info using document ID
+      const client = clients.find(c => c.id === uploadClient);
+      
+      if (!client) {
+        alert('Please select a client');
+        return;
+      }
+      
       const clientName = `${client.firstName} ${client.lastName}`;
 
       // Upload file to Firebase Storage
@@ -1029,7 +1037,7 @@ const AdminDashboard = () => {
                 >
                   <option value="">Select a client...</option>
                   {clients.map((client) => (
-                    <option key={client.uid} value={client.uid}>
+                    <option key={client.id} value={client.id}>
                       {client.firstName} {client.lastName}
                     </option>
                   ))}
