@@ -216,13 +216,30 @@ const AdminDashboard = () => {
       return;
     }
 
+    console.log('Selected client ID:', selectedClient); // Debug log
+
     try {
       // Get client details
       const clientQuery = query(collection(db, 'users'), where('uid', '==', selectedClient));
       const clientSnapshot = await getDocs(clientQuery);
+      
+      console.log('Query results:', clientSnapshot.size, 'documents found'); // Debug log
+      
+      if (clientSnapshot.empty) {
+        alert('Client not found in database. Please make sure the client profile exists.');
+        return;
+      }
+      
       const clientData = clientSnapshot.docs[0].data();
+      console.log('Client data:', clientData); // Debug log
+      
       const clientName = `${clientData.firstName} ${clientData.lastName}`;
       const clientEmail = clientData.email;
+      
+      if (!clientEmail) {
+        alert('Client email address not found. Please make sure the client has an email address.');
+        return;
+      }
 
       // Save message to Firestore
       await addDoc(collection(db, 'messages'), {
