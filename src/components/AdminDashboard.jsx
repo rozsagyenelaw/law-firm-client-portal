@@ -1,64 +1,1049 @@
-// Add this import at the top of AdminDashboard.jsx
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, FileText, MessageSquare, Upload, Search, 
+  Plus, Edit, Trash2, Send, Calendar, DollarSign,
+  Home, LogOut, Settings, Eye, Download, Shield,
+  CheckCircle, AlertCircle, Clock, Menu, X
+} from 'lucide-react';
+import { 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  orderBy,
+  getDoc,
+  setDoc
+} from 'firebase/firestore';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
+import { auth, db, storage } from '../firebase';
 import emailjs from '@emailjs/browser';
 
-// Initialize EmailJS (add this after the imports)
+// Initialize EmailJS
 emailjs.init('tlwGhvG0aPvocwYcO');
 
-// Update the handleSendMessage function in AdminDashboard.jsx
-// Replace the existing handleSendMessage function with this:
-
-const handleSendMessage = async (e) => {
-  e.preventDefault();
+const AdminDashboard = () => {
+  const [adminUser, setAdminUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
-  if (!selectedClient || !messageSubject || !messageContent) {
-    alert('Please fill in all fields');
-    return;
-  }
+  // Data states
+  const [clients, setClients] = useState([]);
+  const [matters, setMatters] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [stats, setStats] = useState({
+    totalClients: 0,
+    activeMatters: 0,
+    totalDocuments: 0,
+    unreadMessages: 0
+  });
+  
+  // Form states
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // New client form data
+  const [newClientData, setNewClientData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    address: '',
+    password: '',
+    matterType: 'Estate Planning',
+    matterTitle: '',
+    matterDescription: ''
+  });
+  
+  // Message form data
+  const [selectedClient, setSelectedClient] = useState('');
+  const [messageSubject, setMessageSubject] = useState('');
+  const [messageContent, setMessageContent] = useState('');
+  
+  // Upload form data
+  const [uploadClient, setUploadClient] = useState('');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadCategory, setUploadCategory] = useState('');
 
-  try {
-    // Get client details
-    const clientQuery = query(collection(db, 'users'), where('uid', '==', selectedClient));
-    const clientSnapshot = await getDocs(clientQuery);
-    const clientData = clientSnapshot.docs[0].data();
-    const clientName = `${clientData.firstName} ${clientData.lastName}`;
-    const clientEmail = clientData.email;
+  // Admin emails that are allowed to access the dashboard
+  const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
 
-    // Save message to Firestore
-    await addDoc(collection(db, 'messages'), {
-      clientId: selectedClient,
-      clientName: clientName,
-      from: 'Law Offices of Rozsa Gyene',
-      subject: messageSubject,
-      message: messageContent,
-      date: serverTimestamp(),
-      unread: true
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user && ADMIN_EMAILS.includes(user.email)) {
+        setAdminUser(user);
+        await loadDashboardData();
+      } else {
+        setAdminUser(null);
+      }
+      setLoading(false);
     });
 
-    // Send email notification to client
-    const emailParams = {
-      client_name: clientName,
-      client_email: clientEmail,
-      message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
-    };
+    return unsubscribe;
+  }, []);
 
-    await emailjs.send(
-      'service_1y5vmr2',
-      'template_ita6dzu',
-      emailParams
+  const loadDashboardData = async () => {
+    try {
+      // Load clients
+      const clientsSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
+      const clientsData = clientsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        uid: doc.data().uid,
+        ...doc.data()
+      }));
+      setClients(clientsData);
+
+      // Load matters
+      const mattersSnapshot = await getDocs(collection(db, 'matters'));
+      const mattersData = mattersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMatters(mattersData);
+
+      // Load documents
+      const documentsSnapshot = await getDocs(query(collection(db, 'documents'), orderBy('uploadDate', 'desc')));
+      const documentsData = documentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDocuments(documentsData);
+
+      // Load messages
+      const messagesSnapshot = await getDocs(query(collection(db, 'messages'), orderBy('date', 'desc')));
+      const messagesData = messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMessages(messagesData);
+
+      // Calculate stats
+      setStats({
+        totalClients: clientsData.length,
+        activeMatters: mattersData.filter(m => m.status === 'Active').length,
+        totalDocuments: documentsData.length,
+        unreadMessages: messagesData.filter(m => m.unread).length
+      });
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const handleCreateClient = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Create Firebase Auth user
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        newClientData.email,
+        newClientData.password
+      );
+
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        email: newClientData.email,
+        firstName: newClientData.firstName,
+        lastName: newClientData.lastName,
+        phone: newClientData.phone,
+        address: newClientData.address,
+        role: 'client',
+        createdAt: serverTimestamp(),
+        createdBy: adminUser.email
+      });
+
+      // Create initial matter if provided
+      if (newClientData.matterTitle) {
+        await addDoc(collection(db, 'matters'), {
+          clientId: userCredential.user.uid,
+          clientName: `${newClientData.firstName} ${newClientData.lastName}`,
+          title: newClientData.matterTitle,
+          type: newClientData.matterType,
+          description: newClientData.matterDescription,
+          status: 'Active',
+          createdAt: serverTimestamp(),
+          lastUpdate: serverTimestamp()
+        });
+      }
+
+      // Reset form
+      setNewClientData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        address: '',
+        password: '',
+        matterType: 'Estate Planning',
+        matterTitle: '',
+        matterDescription: ''
+      });
+      setShowNewClientForm(false);
+      
+      // Reload data
+      await loadDashboardData();
+      alert('Client created successfully!');
+    } catch (error) {
+      console.error('Error creating client:', error);
+      alert('Error creating client: ' + error.message);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    
+    if (!selectedClient || !messageSubject || !messageContent) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    try {
+      // Get client details
+      const clientQuery = query(collection(db, 'users'), where('uid', '==', selectedClient));
+      const clientSnapshot = await getDocs(clientQuery);
+      const clientData = clientSnapshot.docs[0].data();
+      const clientName = `${clientData.firstName} ${clientData.lastName}`;
+      const clientEmail = clientData.email;
+
+      // Save message to Firestore
+      await addDoc(collection(db, 'messages'), {
+        clientId: selectedClient,
+        clientName: clientName,
+        from: 'Law Offices of Rozsa Gyene',
+        subject: messageSubject,
+        message: messageContent,
+        date: serverTimestamp(),
+        unread: true
+      });
+
+      // Send email notification to client
+      const emailParams = {
+        client_name: clientName,
+        client_email: clientEmail,
+        message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
+      };
+
+      await emailjs.send(
+        'service_1y5vmr2',
+        'template_ita6dzu',
+        emailParams
+      );
+
+      // Clear form
+      setSelectedClient('');
+      setMessageSubject('');
+      setMessageContent('');
+      setShowMessageModal(false);
+      
+      // Reload messages
+      await loadDashboardData();
+      
+      alert('Message sent successfully!');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message');
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    e.preventDefault();
+    
+    if (!uploadClient || !uploadFile || !uploadCategory) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    setUploadProgress(10);
+
+    try {
+      // Get client info
+      const client = clients.find(c => c.uid === uploadClient);
+      const clientName = `${client.firstName} ${client.lastName}`;
+
+      // Upload file to Firebase Storage
+      const timestamp = new Date().getTime();
+      const fileName = `${uploadClient}/${uploadCategory}/${timestamp}_${uploadFile.name}`;
+      const storageRef = ref(storage, `documents/${fileName}`);
+      
+      setUploadProgress(30);
+      const snapshot = await uploadBytes(storageRef, uploadFile);
+      
+      setUploadProgress(60);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      setUploadProgress(80);
+
+      // Save document info to Firestore
+      await addDoc(collection(db, 'documents'), {
+        name: uploadFile.name,
+        category: uploadCategory,
+        url: downloadURL,
+        size: `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB`,
+        uploadDate: serverTimestamp(),
+        clientId: uploadClient,
+        clientName: clientName,
+        uploadedBy: adminUser.email
+      });
+
+      setUploadProgress(100);
+
+      // Reset form
+      setUploadClient('');
+      setUploadFile(null);
+      setUploadCategory('');
+      setShowUploadModal(false);
+      setUploadProgress(0);
+      
+      // Reload documents
+      await loadDashboardData();
+      
+      alert('Document uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      alert('Failed to upload document');
+      setUploadProgress(0);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-12 w-12 text-blue-900 animate-pulse mx-auto mb-4" />
+          <p className="text-gray-600">Loading admin dashboard...</p>
+        </div>
+      </div>
     );
-
-    // Clear form
-    setSelectedClient('');
-    setMessageSubject('');
-    setMessageContent('');
-    setShowMessageModal(false);
-    
-    // Reload messages
-    await loadMessages();
-    
-    alert('Message sent successfully!');
-  } catch (error) {
-    console.error('Error sending message:', error);
-    alert('Failed to send message');
   }
+
+  if (!adminUser) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-12 w-12 text-red-600 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-gray-600">You don't have permission to access this page.</p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="mt-4 px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+          >
+            Return to Client Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile menu button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="p-2 rounded-md bg-white shadow-md"
+        >
+          {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </button>
+      </div>
+
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-blue-900 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
+        <div className="h-full flex flex-col">
+          <div className="p-6">
+            <div className="flex items-center text-white mb-8">
+              <Shield className="h-8 w-8 mr-3" />
+              <div>
+                <h1 className="text-xl font-bold">Admin Dashboard</h1>
+                <p className="text-sm text-blue-200">Law Offices of Rozsa Gyene</p>
+              </div>
+            </div>
+            
+            <nav className="space-y-2">
+              {[
+                { id: 'overview', icon: Home, label: 'Overview' },
+                { id: 'clients', icon: Users, label: 'Clients' },
+                { id: 'documents', icon: FileText, label: 'Documents' },
+                { id: 'messages', icon: MessageSquare, label: 'Messages' },
+                { id: 'matters', icon: Folder, label: 'Matters' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-blue-800 text-white'
+                      : 'text-blue-100 hover:bg-blue-800 hover:text-white'
+                  }`}
+                >
+                  <item.icon className="h-5 w-5 mr-3" />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+          
+          <div className="mt-auto p-6">
+            <div className="text-blue-200 text-sm mb-4">
+              {adminUser.email}
+            </div>
+            <button
+              onClick={() => signOut(auth)}
+              className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-blue-100 hover:bg-blue-800 hover:text-white transition-colors"
+            >
+              <LogOut className="h-5 w-5 mr-3" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="lg:ml-64">
+        <div className="p-4 sm:p-6 lg:p-8">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard Overview</h2>
+              
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <Users className="h-10 w-10 text-blue-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Total Clients</p>
+                      <p className="text-2xl font-semibold">{stats.totalClients}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <Folder className="h-10 w-10 text-green-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Active Matters</p>
+                      <p className="text-2xl font-semibold">{stats.activeMatters}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <FileText className="h-10 w-10 text-purple-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Documents</p>
+                      <p className="text-2xl font-semibold">{stats.totalDocuments}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center">
+                    <MessageSquare className="h-10 w-10 text-orange-600 mr-4" />
+                    <div>
+                      <p className="text-sm text-gray-600">Unread Messages</p>
+                      <p className="text-2xl font-semibold">{stats.unreadMessages}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="bg-white rounded-lg shadow p-6 mb-8">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button
+                    onClick={() => setShowNewClientForm(true)}
+                    className="flex items-center justify-center px-4 py-3 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    New Client
+                  </button>
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700"
+                  >
+                    <Upload className="h-5 w-5 mr-2" />
+                    Upload Document
+                  </button>
+                  <button
+                    onClick={() => setShowMessageModal(true)}
+                    className="flex items-center justify-center px-4 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                  >
+                    <Send className="h-5 w-5 mr-2" />
+                    Send Message
+                  </button>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              <div className="bg-white rounded-lg shadow">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
+                </div>
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {documents.slice(0, 5).map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-gray-400 mr-3" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{doc.name}</p>
+                            <p className="text-sm text-gray-500">
+                              Uploaded for {doc.clientName} • {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Clients Tab */}
+          {activeTab === 'clients' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Clients</h2>
+                <button
+                  onClick={() => setShowNewClientForm(true)}
+                  className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  New Client
+                </button>
+              </div>
+
+              <div className="bg-white shadow rounded-lg">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Phone
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Created
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {clients.map((client) => (
+                        <tr key={client.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {client.firstName} {client.lastName}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{client.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{client.phone}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {client.createdAt?.toDate ? client.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button className="text-blue-600 hover:text-blue-900 mr-3">
+                              View
+                            </button>
+                            <button className="text-gray-600 hover:text-gray-900">
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Documents Tab */}
+          {activeTab === 'documents' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  <Upload className="h-5 w-5 mr-2" />
+                  Upload Document
+                </button>
+              </div>
+
+              <div className="bg-white shadow rounded-lg">
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {documents.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div className="flex items-center">
+                          <FileText className="h-8 w-8 text-gray-400 mr-4" />
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900">{doc.name}</h4>
+                            <p className="text-sm text-gray-500">
+                              {doc.clientName} • {doc.category} • {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <span className="text-sm text-gray-500">{doc.size}</span>
+                          <a 
+                            href={doc.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Download className="h-5 w-5" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Messages Tab */}
+          {activeTab === 'messages' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
+                <button
+                  onClick={() => setShowMessageModal(true)}
+                  className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  <Send className="h-5 w-5 mr-2" />
+                  Send Message
+                </button>
+              </div>
+
+              <div className="bg-white shadow rounded-lg">
+                <div className="divide-y divide-gray-200">
+                  {messages.map((message) => (
+                    <div key={message.id} className={`p-6 ${message.unread ? 'bg-blue-50' : ''}`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-gray-900">{message.subject}</h4>
+                            <span className="text-sm text-gray-500">
+                              {message.date?.toDate ? message.date.toDate().toLocaleDateString() : 'Recently'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">To: {message.clientName}</p>
+                          <p className="text-sm text-gray-700 mt-2">{message.message}</p>
+                        </div>
+                        {message.unread && (
+                          <span className="ml-4 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                            Unread
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Matters Tab */}
+          {activeTab === 'matters' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Matters</h2>
+
+              <div className="bg-white shadow rounded-lg">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Title
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Client
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Type
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Last Update
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {matters.map((matter) => (
+                        <tr key={matter.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{matter.title}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{matter.clientName}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{matter.type}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              matter.status === 'Active' ? 'bg-green-100 text-green-800' :
+                              matter.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {matter.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {matter.lastUpdate?.toDate ? matter.lastUpdate.toDate().toLocaleDateString() : 'N/A'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* New Client Modal */}
+      {showNewClientForm && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Create New Client</h3>
+              <button
+                onClick={() => setShowNewClientForm(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateClient} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">First Name</label>
+                  <input
+                    type="text"
+                    value={newClientData.firstName}
+                    onChange={(e) => setNewClientData({...newClientData, firstName: e.target.value})}
+                    required
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                  <input
+                    type="text"
+                    value={newClientData.lastName}
+                    onChange={(e) => setNewClientData({...newClientData, lastName: e.target.value})}
+                    required
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  value={newClientData.email}
+                  onChange={(e) => setNewClientData({...newClientData, email: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Phone</label>
+                <input
+                  type="tel"
+                  value={newClientData.phone}
+                  onChange={(e) => setNewClientData({...newClientData, phone: e.target.value})}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Address</label>
+                <input
+                  type="text"
+                  value={newClientData.address}
+                  onChange={(e) => setNewClientData({...newClientData, address: e.target.value})}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Password</label>
+                <input
+                  type="password"
+                  value={newClientData.password}
+                  onChange={(e) => setNewClientData({...newClientData, password: e.target.value})}
+                  required
+                  minLength={6}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="mt-1 text-sm text-gray-500">Minimum 6 characters</p>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-md font-medium text-gray-900 mb-3">Initial Matter (Optional)</h4>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Matter Type</label>
+                  <select
+                    value={newClientData.matterType}
+                    onChange={(e) => setNewClientData({...newClientData, matterType: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option>Estate Planning</option>
+                    <option>Probate</option>
+                    <option>Trust Administration</option>
+                    <option>Conservatorship</option>
+                  </select>
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700">Matter Title</label>
+                  <input
+                    type="text"
+                    value={newClientData.matterTitle}
+                    onChange={(e) => setNewClientData({...newClientData, matterTitle: e.target.value})}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={newClientData.matterDescription}
+                    onChange={(e) => setNewClientData({...newClientData, matterDescription: e.target.value})}
+                    rows={3}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowNewClientForm(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800"
+                >
+                  Create Client
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Document Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Upload Document</h3>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleFileUpload} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Client</label>
+                <select
+                  value={uploadClient}
+                  onChange={(e) => setUploadClient(e.target.value)}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select a client...</option>
+                  {clients.map((client) => (
+                    <option key={client.uid} value={client.uid}>
+                      {client.firstName} {client.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Category</label>
+                <input
+                  type="text"
+                  value={uploadCategory}
+                  onChange={(e) => setUploadCategory(e.target.value)}
+                  placeholder="e.g., Trust Documents, Tax Returns"
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">File</label>
+                <input
+                  type="file"
+                  onChange={(e) => setUploadFile(e.target.files[0])}
+                  required
+                  className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {uploadProgress > 0 && (
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full" 
+                    style={{width: `${uploadProgress}%`}}
+                  ></div>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  Upload
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Send Message Modal */}
+      {showMessageModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Send Message</h3>
+              <button
+                onClick={() => setShowMessageModal(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendMessage} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Client</label>
+                <select
+                  value={selectedClient}
+                  onChange={(e) => setSelectedClient(e.target.value)}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select a client...</option>
+                  {clients.map((client) => (
+                    <option key={client.uid} value={client.uid}>
+                      {client.firstName} {client.lastName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Subject</label>
+                <input
+                  type="text"
+                  value={messageSubject}
+                  onChange={(e) => setMessageSubject(e.target.value)}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Message</label>
+                <textarea
+                  value={messageContent}
+                  onChange={(e) => setMessageContent(e.target.value)}
+                  rows={4}
+                  required
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowMessageModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                >
+                  Send Message
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
+
+export default AdminDashboard;
