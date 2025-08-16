@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FileText, PenTool, Check, Download, AlertCircle, Lock, Calendar, User, Hash } from 'lucide-react';
 import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import CryptoJS from 'crypto-js';
 
 const DocumentSigning = ({ document, user, userProfile }) => {
   const [signature, setSignature] = useState('');
@@ -59,9 +58,14 @@ const DocumentSigning = ({ document, user, userProfile }) => {
     setSignature(signatureData);
   };
   
-  // Generate document hash for integrity
-  const generateDocumentHash = (docContent) => {
-    return CryptoJS.SHA256(docContent).toString();
+  // Generate document hash for integrity using Web Crypto API
+  const generateDocumentHash = async (docContent) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(docContent);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
   };
   
   // Create audit trail entry
@@ -75,7 +79,7 @@ const DocumentSigning = ({ document, user, userProfile }) => {
       timestamp: serverTimestamp(),
       ipAddress: ipAddress,
       userAgent: navigator.userAgent,
-      documentHash: generateDocumentHash(document.content || document.name)
+      documentHash: await generateDocumentHash(document.content || document.name)
     });
   };
   
@@ -97,7 +101,7 @@ const DocumentSigning = ({ document, user, userProfile }) => {
         signedAt: serverTimestamp(),
         ipAddress: ipAddress,
         userAgent: navigator.userAgent,
-        documentHash: generateDocumentHash(document.content || document.name),
+        documentHash: await generateDocumentHash(document.content || document.name),
         certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,
         esignConsent: true,
         agreedToTerms: true
@@ -143,7 +147,7 @@ const DocumentSigning = ({ document, user, userProfile }) => {
         ipAddress: signatureData.ipAddress
       },
       signedAt: new Date().toISOString(),
-      verificationCode: generateDocumentHash(signatureId + Date.now()),
+      verificationCode: await generateDocumentHash(signatureId + Date.now()),
       legalNotice: 'This certificate confirms that the above-named individual has electronically signed the referenced document in accordance with the ESIGN Act and UETA.',
       courtCompliance: 'This electronic signature is legally binding and admissible in court proceedings.'
     };
