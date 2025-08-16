@@ -85,12 +85,22 @@ const ClientPortal = () => {
         
         // Only load user profile and data for non-admin users
         if (!userIsAdmin) {
-          const userQuery = query(collection(db, 'users'), where('email', '==', user.email));
-          const userSnapshot = await getDocs(userQuery);
-          if (!userSnapshot.empty) {
-            setUserProfile({ id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() });
+          // First try to find user by uid
+          let userQuery = query(collection(db, 'users'), where('uid', '==', user.uid));
+          let userSnapshot = await getDocs(userQuery);
+          
+          // If not found by uid, try by email
+          if (userSnapshot.empty) {
+            userQuery = query(collection(db, 'users'), where('email', '==', user.email));
+            userSnapshot = await getDocs(userQuery);
           }
-          await loadUserData(user);
+          
+          if (!userSnapshot.empty) {
+            const userData = { id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() };
+            setUserProfile(userData);
+            // Pass the user data to loadUserData
+            await loadUserData(user, userData);
+          }
         }
       } else {
         setUser(null);
@@ -103,13 +113,15 @@ const ClientPortal = () => {
     return unsubscribe;
   }, []);
 
-  const loadUserData = async (user) => {
+  const loadUserData = async (user, profileData = null) => {
     try {
+      // Use profileData if provided, otherwise use user
+      const userIdForQuery = profileData ? (profileData.uid || profileData.id) : user.uid;
+      
       // Load user's matters
       const mattersQuery = query(
         collection(db, 'matters'), 
-        where('clientId', '==', user.uid),
-        orderBy('createdAt', 'desc')
+        where('clientId', '==', userIdForQuery)
       );
       const mattersSnapshot = await getDocs(mattersQuery);
       const matters = mattersSnapshot.docs.map(doc => ({
@@ -118,24 +130,65 @@ const ClientPortal = () => {
       }));
       setUserMatters(matters);
 
-      // Load user's documents
-      const documentsQuery = query(
+      // Load ALL documents for this user (check both uid and id)
+      const documentsQuery1 = query(
         collection(db, 'documents'),
-        where('clientId', '==', user.uid),
-        orderBy('uploadDate', 'desc')
+        where('clientId', '==', user.uid)
       );
-      const documentsSnapshot = await getDocs(documentsQuery);
-      const documents = documentsSnapshot.docs.map(doc => ({
+      const documentsSnapshot1 = await getDocs(documentsQuery1);
+      
+      // Also check with the profile uid/id if different
+      let documentsSnapshot2 = { docs: [] };
+      if (profileData && profileData.uid && profileData.uid !== user.uid) {
+        const documentsQuery2 = query(
+          collection(db, 'documents'),
+          where('clientId', '==', profileData.uid)
+        );
+        documentsSnapshot2 = await getDocs(documentsQuery2);
+      }
+      
+      // Also check with the document id if available
+      let documentsSnapshot3 = { docs: [] };
+      if (profileData && profileData.id) {
+        const documentsQuery3 = query(
+          collection(db, 'documents'),
+          where('clientId', '==', profileData.id)
+        );
+        documentsSnapshot3 = await getDocs(documentsQuery3);
+      }
+      
+      // Combine all documents and remove duplicates
+      const allDocs = [
+        ...documentsSnapshot1.docs,
+        ...documentsSnapshot2.docs,
+        ...documentsSnapshot3.docs
+      ];
+      
+      const uniqueDocs = allDocs.reduce((acc, doc) => {
+        if (!acc.find(d => d.id === doc.id)) {
+          acc.push(doc);
+        }
+        return acc;
+      }, []);
+      
+      const documents = uniqueDocs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      setUserDocuments(documents);
+      
+      // Sort documents by upload date (handling both serverTimestamp and regular dates)
+      const sortedDocuments = documents.sort((a, b) => {
+        const dateA = a.uploadDate?.toDate ? a.uploadDate.toDate() : new Date(a.uploadDate || 0);
+        const dateB = b.uploadDate?.toDate ? b.uploadDate.toDate() : new Date(b.uploadDate || 0);
+        return dateB - dateA; // Newest first
+      });
+      
+      setUserDocuments(sortedDocuments);
 
       // Load user's messages
       const messagesQuery = query(
         collection(db, 'messages'),
-        where('clientId', '==', user.uid),
-        orderBy('date', 'desc')
+        where('clientId', '==', userIdForQuery)
       );
       const messagesSnapshot = await getDocs(messagesQuery);
       const messages = messagesSnapshot.docs.map(doc => ({
