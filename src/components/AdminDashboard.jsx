@@ -263,7 +263,7 @@ const AdminDashboard = () => {
       // Send email notification to client
       const emailParams = {
         client_name: clientName,
-        client_email: clientEmail,
+        to_email: clientEmail,
         message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
       };
 
@@ -271,7 +271,7 @@ const AdminDashboard = () => {
       console.log('Email params:', emailParams); // Debug log
 
       await emailjs.send(
-        'service_1y5vmr2',
+        'service_0ak47yn',
         'template_ita6dzu',
         emailParams
       );
