@@ -242,6 +242,9 @@ const AdminDashboard = () => {
         message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
       };
 
+      console.log('Sending email to:', clientEmail); // Debug log
+      console.log('Email params:', emailParams); // Debug log
+
       await emailjs.send(
         'service_1y5vmr2',
         'template_ita6dzu',
