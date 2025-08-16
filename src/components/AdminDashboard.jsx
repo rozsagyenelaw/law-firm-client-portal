@@ -117,84 +117,46 @@ const AdminDashboard = () => {
 
   const loadDashboardData = async () => {
     try {
-      console.log('Starting to load dashboard data...');
-      
       // Load clients
       const clientsSnapshot = await getDocs(query(collection(db, 'users'), where('role', '==', 'client')));
       const clientsData = clientsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      console.log('Loaded clients:', clientsData);
+      console.log('Loaded clients:', clientsData); // Debug log
       setClients(clientsData);
 
       // Load matters
-      console.log('Loading matters...');
       const mattersSnapshot = await getDocs(collection(db, 'matters'));
       const mattersData = mattersSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      console.log('Loaded matters:', mattersData);
       setMatters(mattersData);
 
       // Load documents
-      console.log('Loading documents...');
-      try {
-        const documentsSnapshot = await getDocs(query(collection(db, 'documents'), orderBy('uploadDate', 'desc')));
-        const documentsData = documentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        console.log('Loaded documents with orderBy:', documentsData);
-        setDocuments(documentsData);
-      } catch (error) {
-        console.error('Error loading documents with orderBy:', error);
-        // Try without orderBy
-        try {
-          const documentsSnapshot = await getDocs(collection(db, 'documents'));
-          const documentsData = documentsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          console.log('Loaded documents without orderBy:', documentsData);
-          setDocuments(documentsData);
-        } catch (fallbackError) {
-          console.error('Error loading documents:', fallbackError);
-          setDocuments([]); // Set empty array so UI doesn't break
-        }
-      }
+      const documentsSnapshot = await getDocs(query(collection(db, 'documents'), orderBy('uploadDate', 'desc')));
+      const documentsData = documentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setDocuments(documentsData);
 
       // Load messages
-      console.log('Loading messages...');
-      try {
-        const messagesSnapshot = await getDocs(query(collection(db, 'messages'), orderBy('date', 'desc')));
-        const messagesData = messagesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        console.log('Loaded messages:', messagesData);
-        setMessages(messagesData);
-      } catch (error) {
-        console.error('Error loading messages:', error);
-        // Try without orderBy
-        const messagesSnapshot = await getDocs(collection(db, 'messages'));
-        const messagesData = messagesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setMessages(messagesData);
-      }
+      const messagesSnapshot = await getDocs(query(collection(db, 'messages'), orderBy('date', 'desc')));
+      const messagesData = messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setMessages(messagesData);
 
       // Calculate stats
       setStats({
         totalClients: clientsData.length,
         activeMatters: mattersData.filter(m => m.status === 'Active').length,
-        totalDocuments: documentsData?.length || 0,
-        unreadMessages: messagesData?.filter(m => m.unread).length || 0
+        totalDocuments: documentsData.length,
+        unreadMessages: messagesData.filter(m => m.unread).length
       });
-      
-      console.log('Dashboard data loading complete');
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
