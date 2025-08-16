@@ -31,6 +31,7 @@ import {
 import { auth, db, storage } from './firebase';
 import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
+import Appointments from './components/Appointments';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -638,6 +639,7 @@ const ClientPortal = () => {
               {[
                 { id: 'dashboard', icon: Home, label: 'Dashboard' },
                 { id: 'documents', icon: FileText, label: 'Documents' },
+                { id: 'appointments', icon: Calendar, label: 'Appointments' },
                 { id: 'messages', icon: MessageSquare, label: 'Messages' },
                 { id: 'billing', icon: DollarSign, label: 'Billing' },
                 { id: 'settings', icon: Settings, label: 'Account Settings' },
@@ -870,6 +872,11 @@ const ClientPortal = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Appointments */}
+          {activeTab === 'appointments' && (
+            <Appointments userProfile={userProfile} />
           )}
 
           {/* Messages */}
