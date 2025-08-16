@@ -3,7 +3,7 @@ import {
   Users, FileText, MessageSquare, Upload, Search, 
   Plus, Edit, Trash2, Send, Calendar, DollarSign,
   Home, LogOut, Settings, Eye, Download, Shield,
-  CheckCircle, AlertCircle, Clock, Menu, X
+  CheckCircle, AlertCircle, Clock, Menu, X, Folder
 } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword,
