@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save } from 'lucide-react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send } from 'lucide-react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -31,6 +31,10 @@ import {
 import { auth, db, storage } from './firebase';
 import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
+import emailjs from '@emailjs/browser';
+
+// Initialize EmailJS with your public key
+emailjs.init('tlwGhvG0aPvocwYcO');
 
 const ClientPortal = () => {
   const [user, setUser] = useState(null);
@@ -46,6 +50,13 @@ const ClientPortal = () => {
   const [userMessages, setUserMessages] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
+
+  // Client upload states
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   // Password change states
   const [passwordChangeData, setPasswordChangeData] = useState({
@@ -134,6 +145,89 @@ const ClientPortal = () => {
       setUserMessages(messages);
     } catch (error) {
       console.error('Error loading user data:', error);
+    }
+  };
+
+  const handleClientUpload = async (e) => {
+    e.preventDefault();
+    setUploadError('');
+    setUploadSuccess('');
+    
+    if (!selectedFile) {
+      setUploadError('Please select a file to upload');
+      return;
+    }
+    
+    if (!selectedCategory) {
+      setUploadError('Please select a category');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Create a unique filename
+      const timestamp = new Date().getTime();
+      const fileName = `${user.uid}/${selectedCategory}/${timestamp}_${selectedFile.name}`;
+      const storageRef = ref(storage, `client-uploads/${fileName}`);
+
+      // Upload file
+      const uploadTask = uploadBytes(storageRef, selectedFile);
+      
+      // Get download URL
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      // Save document info to Firestore
+      const docData = {
+        name: selectedFile.name,
+        category: selectedCategory,
+        url: downloadURL,
+        size: `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`,
+        uploadDate: serverTimestamp(),
+        clientId: user.uid,
+        clientName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+        uploadedBy: 'client',
+        status: 'pending_review'
+      };
+
+      await addDoc(collection(db, 'documents'), docData);
+
+      // Send email notification to admin
+      const emailParams = {
+        to_email: 'rozsagyenelaw@yahoo.com',
+        client_name: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+        client_email: user.email,
+        document_name: selectedFile.name,
+        category: selectedCategory,
+        upload_date: new Date().toLocaleDateString()
+      };
+
+      await emailjs.send(
+        'service_1y5vmr2',
+        'template_xcta2pl',
+        emailParams
+      );
+
+      setUploadSuccess('Document uploaded successfully!');
+      setSelectedFile(null);
+      setSelectedCategory('');
+      
+      // Reload documents
+      await loadUserData(user);
+
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setUploadSuccess('');
+      }, 5000);
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError('Failed to upload document. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -607,6 +701,72 @@ const ClientPortal = () => {
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Documents</h2>
               
+              {/* Upload Section */}
+              <div className="bg-white shadow rounded-lg mb-6">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-900">Upload Documents</h3>
+                </div>
+                <div className="p-6">
+                  {uploadSuccess && (
+                    <div className="mb-4 bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded relative">
+                      <CheckCircle className="h-5 w-5 inline mr-2" />
+                      {uploadSuccess}
+                    </div>
+                  )}
+                  
+                  {uploadError && (
+                    <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded relative">
+                      <AlertCircle className="h-5 w-5 inline mr-2" />
+                      {uploadError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleClientUpload} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Category
+                      </label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        <option value="">Choose a category...</option>
+                        <option value="existing_documents">Existing Documents</option>
+                        <option value="completed_documents">Completed Documents</option>
+                        <option value="supporting_documents">Supporting Documents</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select File
+                      </label>
+                      <input
+                        type="file"
+                        onChange={(e) => setSelectedFile(e.target.files[0])}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        required
+                      />
+                      <p className="mt-1 text-sm text-gray-500">
+                        Maximum file size: 10MB. Supported formats: PDF, DOC, DOCX, JPG, PNG
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isUploading}
+                      className="flex items-center px-4 py-2 bg-blue-900 text-white rounded-md hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {isUploading ? 'Uploading...' : 'Upload Document'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Documents List */}
               <div className="bg-white shadow rounded-lg">
                 <div className="px-6 py-4 border-b border-gray-200">
                   <h3 className="text-lg font-medium text-gray-900">Document Library</h3>
@@ -620,6 +780,11 @@ const ClientPortal = () => {
                           <div>
                             <h4 className="text-sm font-medium text-gray-900">{doc.name}</h4>
                             <p className="text-sm text-gray-500">
+                              {doc.category && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 mr-2">
+                                  {doc.category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                              )}
                               Uploaded {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
                             </p>
                           </div>
