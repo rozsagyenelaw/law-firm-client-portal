@@ -155,22 +155,21 @@ const AdminDashboard = () => {
     e.preventDefault();
     
     try {
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        newClientData.email,
-        newClientData.password
-      );
-
+      // For now, we'll create the user profile without Firebase Auth
+      // The client will need to use "Forgot Password" on first login
+      const tempUid = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      
       // Create user profile in Firestore
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        uid: userCredential.user.uid,
+      await setDoc(doc(db, 'users', tempUid), {
+        uid: tempUid,
         email: newClientData.email,
         firstName: newClientData.firstName,
         lastName: newClientData.lastName,
         phone: newClientData.phone,
         address: newClientData.address,
         role: 'client',
+        needsAuthSetup: true, // Flag to indicate auth needs to be set up
+        tempPassword: newClientData.password, // Store temporarily (you should hash this in production)
         createdAt: serverTimestamp(),
         createdBy: adminUser.email
       });
@@ -178,7 +177,7 @@ const AdminDashboard = () => {
       // Create initial matter if provided
       if (newClientData.matterTitle) {
         await addDoc(collection(db, 'matters'), {
-          clientId: userCredential.user.uid,
+          clientId: tempUid,
           clientName: `${newClientData.firstName} ${newClientData.lastName}`,
           title: newClientData.matterTitle,
           type: newClientData.matterType,
@@ -205,10 +204,16 @@ const AdminDashboard = () => {
       
       // Reload data
       await loadDashboardData();
-      alert('Client created successfully!');
+      alert('Client profile created! Note: Client will need to set up their login credentials on first visit.');
     } catch (error) {
       console.error('Error creating client:', error);
-      alert('Error creating client: ' + error.message);
+      if (error.code === 'auth/email-already-in-use') {
+        alert('This email is already registered. Please use a different email.');
+      } else if (error.code === 'auth/weak-password') {
+        alert('Password is too weak. Please use at least 6 characters.');
+      } else {
+        alert('Error creating client: ' + error.message);
+      }
     }
   };
 
@@ -223,22 +228,19 @@ const AdminDashboard = () => {
     console.log('Selected client ID:', selectedClient); // Debug log
 
     try {
-      // Get client details
-      const clientQuery = query(collection(db, 'users'), where('uid', '==', selectedClient));
-      const clientSnapshot = await getDocs(clientQuery);
+      // Get client details - using document ID instead of uid
+      const selectedClientData = clients.find(c => c.id === selectedClient);
       
-      console.log('Query results:', clientSnapshot.size, 'documents found'); // Debug log
-      
-      if (clientSnapshot.empty) {
-        alert('Client not found in database. Please make sure the client profile exists.');
+      if (!selectedClientData) {
+        alert('Client not found. Please select a valid client.');
         return;
       }
       
-      const clientData = clientSnapshot.docs[0].data();
-      console.log('Client data:', clientData); // Debug log
+      const clientName = `${selectedClientData.firstName} ${selectedClientData.lastName}`;
+      const clientEmail = selectedClientData.email;
       
-      const clientName = `${clientData.firstName} ${clientData.lastName}`;
-      const clientEmail = clientData.email;
+      console.log('Sending email to:', clientEmail); // Debug log
+      console.log('Client data:', selectedClientData); // Debug log
       
       if (!clientEmail) {
         alert('Client email address not found. Please make sure the client has an email address.');
@@ -247,7 +249,7 @@ const AdminDashboard = () => {
 
       // Save message to Firestore
       await addDoc(collection(db, 'messages'), {
-        clientId: selectedClient,
+        clientId: selectedClientData.uid || selectedClientData.id, // Use uid if available, otherwise use doc id
         clientName: clientName,
         from: 'Law Offices of Rozsa Gyene',
         subject: messageSubject,
@@ -944,7 +946,7 @@ const AdminDashboard = () => {
                 >
                   <option value="">Select a client...</option>
                   {clients.map((client) => (
-                    <option key={client.uid} value={client.uid}>
+                    <option key={client.id} value={client.id}>
                       {client.firstName} {client.lastName}
                     </option>
                   ))}
