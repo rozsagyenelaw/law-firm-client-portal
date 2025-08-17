@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, PenTool, Check, Download, AlertCircle, Lock, Calendar, User, Hash } from 'lucide-react';
+import { FileText, PenTool, Check, Download, AlertCircle, Lock, Calendar, User, Hash, X } from 'lucide-react';
 import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const DocumentSigning = ({ document, user, userProfile }) => {
+const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
   const [isDrawing, setIsDrawing] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
@@ -126,8 +126,22 @@ const DocumentSigning = ({ document, user, userProfile }) => {
       // Generate certificate of completion
       await generateCertificate(signatureRef.id, signatureData);
       
+      // Call the onSigned callback if provided
+      if (onSigned) {
+        onSigned({
+          documentId: document.id,
+          signatureId: signatureRef.id,
+          signedAt: new Date()
+        });
+      }
+      
       setShowSigningModal(false);
       alert('Document signed successfully! A certificate of completion has been generated.');
+      
+      // Close the modal
+      if (onClose) {
+        onClose();
+      }
       
     } catch (error) {
       console.error('Error signing document:', error);
@@ -156,19 +170,35 @@ const DocumentSigning = ({ document, user, userProfile }) => {
   };
   
   return (
-    <div>
-      <button
-        onClick={() => setShowSigningModal(true)}
-        className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-      >
-        <PenTool className="h-4 w-4 mr-2" />
-        Sign Document
-      </button>
+    <>
+      {/* Sign Document Button */}
+      {!showSigningModal && (
+        <button
+          onClick={() => setShowSigningModal(true)}
+          className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Sign Document"
+        >
+          <PenTool className="h-5 w-5" />
+        </button>
+      )}
       
+      {/* Signing Modal */}
       {showSigningModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Electronic Document Signing</h3>
+            {/* Modal Header */}
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Electronic Document Signing</h3>
+              <button
+                onClick={() => {
+                  setShowSigningModal(false);
+                  if (onClose) onClose();
+                }}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
             
             {/* Legal Notice */}
             <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-6">
@@ -260,7 +290,10 @@ const DocumentSigning = ({ document, user, userProfile }) => {
             {/* Action Buttons */}
             <div className="flex justify-end space-x-3">
               <button
-                onClick={() => setShowSigningModal(false)}
+                onClick={() => {
+                  setShowSigningModal(false);
+                  if (onClose) onClose();
+                }}
                 className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
                 Cancel
@@ -276,7 +309,7 @@ const DocumentSigning = ({ document, user, userProfile }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

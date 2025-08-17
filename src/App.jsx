@@ -60,6 +60,10 @@ const ClientPortal = () => {
   const [uploadSuccess, setUploadSuccess] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
+  // Document signing states
+  const [signingDocument, setSigningDocument] = useState(null);
+  const [showSigningModal, setShowSigningModal] = useState(false);
+
   // Password change states
   const [passwordChangeData, setPasswordChangeData] = useState({
     currentPassword: '',
@@ -292,6 +296,37 @@ const ClientPortal = () => {
       setIsUploading(false);
       setUploadProgress(0);
     }
+  };
+
+  const handleDocumentSigned = async (signedData) => {
+    // Update the document in the local state to show it's signed
+    setUserDocuments(prevDocs => 
+      prevDocs.map(doc => 
+        doc.id === signedData.documentId 
+          ? { ...doc, signed: true, signedAt: new Date() }
+          : doc
+      )
+    );
+    
+    // Send email notification if needed
+    try {
+      await emailjs.send(
+        'service_3xvs5hf',
+        'template_9m7rppn',
+        {
+          to_email: 'rozsagyenelaw@yahoo.com',
+          client_name: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+          client_email: user.email,
+          document_name: signingDocument.name,
+          signed_date: new Date().toLocaleString()
+        }
+      );
+    } catch (error) {
+      console.error('Error sending notification:', error);
+    }
+    
+    setShowSigningModal(false);
+    setSigningDocument(null);
   };
 
   const handlePasswordChange = async (e) => {
@@ -850,18 +885,28 @@ const ClientPortal = () => {
                                 </span>
                               )}
                               Uploaded {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
+                              {doc.signed && (
+                                <span className="ml-2 text-green-600">
+                                  • Signed on {doc.signedAt?.toLocaleDateString() || 'Recently'}
+                                </span>
+                              )}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
                           <span className="text-sm text-gray-500">{doc.size}</span>
-                          {/* Show signing button for unsigned documents */}
-                          {!doc.signed && doc.category === 'documents_to_sign' && (
-                            <DocumentSigning 
-                              document={doc} 
-                              user={user} 
-                              userProfile={userProfile} 
-                            />
+                          {/* Sign button for unsigned documents */}
+                          {!doc.signed && (
+                            <button
+                              onClick={() => {
+                                setSigningDocument(doc);
+                                setShowSigningModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Sign Document"
+                            >
+                              <PenTool className="h-5 w-5" />
+                            </button>
                           )}
                           <a 
                             href={doc.url} 
@@ -1097,6 +1142,20 @@ const ClientPortal = () => {
           )}
         </div>
       </div>
+
+      {/* Document Signing Modal */}
+      {showSigningModal && signingDocument && (
+        <DocumentSigning
+          document={signingDocument}
+          user={user}
+          userProfile={userProfile}
+          onClose={() => {
+            setShowSigningModal(false);
+            setSigningDocument(null);
+          }}
+          onSigned={handleDocumentSigned}
+        />
+      )}
     </div>
   );
 };
