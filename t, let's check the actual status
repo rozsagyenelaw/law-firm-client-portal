@@ -1,0 +1,508 @@
+[1mdiff --cc src/components/DocumentSigning.jsx[m
+[1mindex 7b01bdb,61b5afd..0000000[m
+[1m--- a/src/components/DocumentSigning.jsx[m
+[1m+++ b/src/components/DocumentSigning.jsx[m
+[36m@@@ -177,162 -177,103 +177,103 @@@[m [mconst DocumentSigning = ({ document, us[m
+        const uploadResult = await uploadBytes(signatureRef, signatureBlob);[m
+        const signatureUrl = await getDownloadURL(uploadResult.ref);[m
+        [m
+[31m-       // Call Firebase Function to embed signature in PDF[m
+[31m-       const functions = getFunctions(app);[m
+[31m-       const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');[m
+[32m++      let signedPdfUrl = document.url; // Default to original URL[m
+[32m +      [m
+[31m-       const result = await embedSignature({[m
+[31m-         documentId: document.id,[m
+[31m-         pdfUrl: document.url,[m
+[31m-         signatureUrl: signatureUrl,[m
+[31m-         placements: signaturePlacements.map(p => ({[m
+[31m-           page: p.page,[m
+[31m-           x: p.x,[m
+[31m-           y: p.y[m
+[31m-         })),[m
+[31m-         signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-         ipAddress: ipAddress[m
+[31m-       });[m
+[31m-       [m
+[31m-       if (result.data.success) {[m
+[31m-         // Create signature record with the signed PDF URL[m
+[31m-         const signatureData = {[m
+[32m+       // Try to call Firebase Function to embed signature in PDF[m
+[32m+       try {[m
+[31m -        const functions = getFunctions();[m
+[32m++        const functions = getFunctions(app);[m
+[32m+         const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');[m
+[32m+         [m
+[32m+         const result = await embedSignature({[m
+            documentId: document.id,[m
+[31m-           documentName: document.name,[m
+[31m-           signerId: user.uid,[m
+[31m-           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-           signerEmail: user.email,[m
+[31m-           signatureImage: signatureUrl,[m
+[31m-           signaturePlacements: signaturePlacements.map(p => ({[m
+[32m+           pdfUrl: document.url,[m
+[32m+           signatureUrl: signatureUrl,[m
+[32m+           placements: signaturePlacements.map(p => ({[m
+              page: p.page,[m
+              x: p.x,[m
+              y: p.y[m
+            })),[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           ipAddress: ipAddress,[m
+[31m-           userAgent: navigator.userAgent,[m
+[31m-           documentHash: await generateDocumentHash(document.content || document.name),[m
+[31m-           certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[31m-           esignConsent: true,[m
+[31m-           agreedToTerms: true,[m
+[31m-           originalDocumentUrl: document.url,[m
+[31m-           signedDocumentUrl: result.data.signedPdfUrl // The PDF with embedded signature[m
+[31m-         };[m
+[31m-         [m
+[31m-         // Save signature record[m
+[31m-         const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[31m-         [m
+[31m-         // Update document with signed PDF URL[m
+[31m-         await updateDoc(doc(db, 'documents', document.id), {[m
+[31m-           signed: true,[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           signedDocumentUrl: result.data.signedPdfUrl, // This is the court-ready PDF[m
+[31m-           originalDocumentUrl: document.url[m
+[31m-         });[m
+[31m-         [m
+[31m-         // Create audit trail[m
+[31m-         await createAuditTrail('DOCUMENT_SIGNED', {[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           method: 'electronic_signature',[m
+[31m-           placementMethod: 'click_to_place',[m
+[31m-           signaturePlacements: signaturePlacements,[m
+[31m-           signedPdfUrl: result.data.signedPdfUrl[m
+[32m+           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[32m+           ipAddress: ipAddress[m
+          });[m
+          [m
+[31m-         // Generate certificate[m
+[31m-         await generateCertificate(signatureRef2.id, signatureData);[m
+[31m-         [m
+[31m-         // Call callback[m
+[31m-         if (onSigned) {[m
+[31m-           onSigned({[m
+[31m-             documentId: document.id,[m
+[31m-             signatureId: signatureRef2.id,[m
+[31m-             signedAt: new Date(),[m
+[31m-             signedDocumentUrl: result.data.signedPdfUrl[m
+[31m-           });[m
+[32m+         if (result.data.success) {[m
+[31m -          // Use the embedded PDF URL[m
+[31m -          var signedPdfUrl = result.data.signedPdfUrl;[m
+[32m++          signedPdfUrl = result.data.signedPdfUrl;[m
+          }[m
+[31m-         [m
+[31m-         setShowPlacementModal(false);[m
+[31m-         alert('Document signed successfully! The signed PDF is ready for court filing.');[m
+[31m-         [m
+[31m-         if (onClose) onClose();[m
+[31m-       } else {[m
+[31m-         throw new Error('Failed to embed signature in PDF');[m
+[32m+       } catch (functionError) {[m
+[32m+         console.log('Firebase function not available, continuing without PDF embedding');[m
+[31m -        var signedPdfUrl = document.url; // Fallback to original URL[m
+        }[m
+        [m
+[31m-     } catch (error) {[m
+[31m-       console.error('Error signing document:', error);[m
+[32m+       // Create signature record[m
+[32m+       const signatureData = {[m
+[32m+         documentId: document.id,[m
+[32m+         documentName: document.name,[m
+[32m+         signerId: user.uid,[m
+[32m+         signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[32m+         signerEmail: user.email,[m
+[32m+         signatureImage: signatureUrl,[m
+[32m+         signaturePlacements: signaturePlacements.map(p => ({[m
+[32m+           page: p.page,[m
+[32m+           x: p.x,[m
+[32m+           y: p.y[m
+[32m+         })),[m
+[32m+         signedAt: serverTimestamp(),[m
+[32m+         ipAddress: ipAddress,[m
+[32m+         userAgent: navigator.userAgent,[m
+[32m+         documentHash: await generateDocumentHash(document.content || document.name),[m
+[32m+         certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[32m+         esignConsent: true,[m
+[32m+         agreedToTerms: true,[m
+[32m+         originalDocumentUrl: document.url,[m
+[31m -        signedDocumentUrl: signedPdfUrl || document.url[m
+[32m++        signedDocumentUrl: signedPdfUrl[m
+[32m+       };[m
+        [m
+[31m-       // Check if it's an authentication error[m
+[31m-       if (error.code === 'unauthenticated' || error.message.includes('401')) {[m
+[31m-         // Try without the Firebase function[m
+[31m-         console.log('Firebase function authentication failed, saving signature data only');[m
+[31m-         [m
+[31m-         // Save signature data without embedding[m
+[31m-         const signatureData = {[m
+[32m+       // Save signature record[m
+[32m+       const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[32m+       [m
+[32m+       // Update document[m
+[32m+       await updateDoc(doc(db, 'documents', document.id), {[m
+[32m+         signed: true,[m
+[32m+         signatureId: signatureRef2.id,[m
+[32m+         signedAt: serverTimestamp(),[m
+[31m -        signedDocumentUrl: signedPdfUrl || document.url,[m
+[32m++        signedDocumentUrl: signedPdfUrl,[m
+[32m+         originalDocumentUrl: document.url[m
+[32m+       });[m
+[32m+       [m
+[32m+       // Create audit trail[m
+[32m+       await createAuditTrail('DOCUMENT_SIGNED', {[m
+[32m+         signatureId: signatureRef2.id,[m
+[32m+         method: 'electronic_signature',[m
+[32m+         placementMethod: 'click_to_place',[m
+[32m+         signaturePlacements: signaturePlacements[m
+[32m+       });[m
+[32m+       [m
+[32m+       // Generate certificate[m
+[32m+       await generateCertificate(signatureRef2.id, signatureData);[m
+[32m+       [m
+[32m+       // Call callback[m
+[32m+       if (onSigned) {[m
+[32m+         onSigned({[m
+            documentId: document.id,[m
+[31m-           documentName: document.name,[m
+[31m-           signerId: user.uid,[m
+[31m-           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-           signerEmail: user.email,[m
+[31m-           signatureImage: signatureUrl,[m
+[31m-           signaturePlacements: signaturePlacements.map(p => ({[m
+[31m-             page: p.page,[m
+[31m-             x: p.x,[m
+[31m-             y: p.y[m
+[31m-           })),[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           ipAddress: ipAddress,[m
+[31m-           userAgent: navigator.userAgent,[m
+[31m-           documentHash: await generateDocumentHash(document.content || document.name),[m
+[31m-           certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[31m-           esignConsent: true,[m
+[31m-           agreedToTerms: true,[m
+[31m-           originalDocumentUrl: document.url,[m
+[31m-           signedDocumentUrl: document.url // Use original URL as fallback[m
+[31m-         };[m
+[31m-         [m
+[31m-         // Save signature record[m
+[31m-         const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[31m-         [m
+[31m-         // Update document[m
+[31m-         await updateDoc(doc(db, 'documents', document.id), {[m
+[31m-           signed: true,[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           signedDocumentUrl: document.url,[m
+[31m-           originalDocumentUrl: document.url[m
+[31m-         });[m
+[31m-         [m
+[31m-         // Create audit trail[m
+[31m-         await createAuditTrail('DOCUMENT_SIGNED', {[m
+            signatureId: signatureRef2.id,[m
+[31m-           method: 'electronic_signature',[m
+[31m-           placementMethod: 'click_to_place',[m
+[31m-           signaturePlacements: signaturePlacements[m
+[32m+           signedAt: new Date(),[m
+[31m -          signedDocumentUrl: signedPdfUrl || document.url[m
+[32m++          signedDocumentUrl: signedPdfUrl[m
+          });[m
+[31m-         [m
+[31m-         // Generate certificate[m
+[31m-         await generateCertificate(signatureRef2.id, signatureData);[m
+[31m-         [m
+[31m-         // Call callback[m
+[31m-         if (onSigned) {[m
+[31m-           onSigned({[m
+[31m-             documentId: document.id,[m
+[31m-             signatureId: signatureRef2.id,[m
+[31m-             signedAt: new Date(),[m
+[31m-             signedDocumentUrl: document.url[m
+[31m-           });[m
+[31m-         }[m
+[31m-         [m
+[31m-         setShowPlacementModal(false);[m
+[31m-         alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');[m
+[31m-         [m
+[31m-         if (onClose) onClose();[m
+[32m+       }[m
+[32m+       [m
+[32m+       setShowPlacementModal(false);[m
+[32m+       [m
+[32m+       if (signedPdfUrl && signedPdfUrl !== document.url) {[m
+[32m+         alert('Document signed successfully! The signed PDF with embedded signature is ready for court filing.');[m
+        } else {[m
+[31m-         setError('Error signing document. Please try again.');[m
+[32m+         alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');[m
+        }[m
+[32m+       [m
+[32m+       if (onClose) onClose();[m
+[32m+       [m
+[32m+     } catch (error) {[m
+[32m+       console.error('Error signing document:', error);[m
+[32m+       setError('Error signing document. Please try again.');[m
+      } finally {[m
+        setIsSigning(false);[m
+      }[m
+[1mdiff --cc src/components/DocumentSigning.jsx[m
+[1mindex 7b01bdb,61b5afd..0000000[m
+[1m--- a/src/components/DocumentSigning.jsx[m
+[1m+++ b/src/components/DocumentSigning.jsx[m
+[36m@@@ -177,162 -177,103 +177,103 @@@[m [mconst DocumentSigning = ({ document, us[m
+        const uploadResult = await uploadBytes(signatureRef, signatureBlob);[m
+        const signatureUrl = await getDownloadURL(uploadResult.ref);[m
+        [m
+[31m-       // Call Firebase Function to embed signature in PDF[m
+[31m-       const functions = getFunctions(app);[m
+[31m-       const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');[m
+[32m++      let signedPdfUrl = document.url; // Default to original URL[m
+[32m +      [m
+[31m-       const result = await embedSignature({[m
+[31m-         documentId: document.id,[m
+[31m-         pdfUrl: document.url,[m
+[31m-         signatureUrl: signatureUrl,[m
+[31m-         placements: signaturePlacements.map(p => ({[m
+[31m-           page: p.page,[m
+[31m-           x: p.x,[m
+[31m-           y: p.y[m
+[31m-         })),[m
+[31m-         signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-         ipAddress: ipAddress[m
+[31m-       });[m
+[31m-       [m
+[31m-       if (result.data.success) {[m
+[31m-         // Create signature record with the signed PDF URL[m
+[31m-         const signatureData = {[m
+[32m+       // Try to call Firebase Function to embed signature in PDF[m
+[32m+       try {[m
+[31m -        const functions = getFunctions();[m
+[32m++        const functions = getFunctions(app);[m
+[32m+         const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');[m
+[32m+         [m
+[32m+         const result = await embedSignature({[m
+            documentId: document.id,[m
+[31m-           documentName: document.name,[m
+[31m-           signerId: user.uid,[m
+[31m-           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-           signerEmail: user.email,[m
+[31m-           signatureImage: signatureUrl,[m
+[31m-           signaturePlacements: signaturePlacements.map(p => ({[m
+[32m+           pdfUrl: document.url,[m
+[32m+           signatureUrl: signatureUrl,[m
+[32m+           placements: signaturePlacements.map(p => ({[m
+              page: p.page,[m
+              x: p.x,[m
+              y: p.y[m
+            })),[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           ipAddress: ipAddress,[m
+[31m-           userAgent: navigator.userAgent,[m
+[31m-           documentHash: await generateDocumentHash(document.content || document.name),[m
+[31m-           certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[31m-           esignConsent: true,[m
+[31m-           agreedToTerms: true,[m
+[31m-           originalDocumentUrl: document.url,[m
+[31m-           signedDocumentUrl: result.data.signedPdfUrl // The PDF with embedded signature[m
+[31m-         };[m
+[31m-         [m
+[31m-         // Save signature record[m
+[31m-         const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[31m-         [m
+[31m-         // Update document with signed PDF URL[m
+[31m-         await updateDoc(doc(db, 'documents', document.id), {[m
+[31m-           signed: true,[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           signedDocumentUrl: result.data.signedPdfUrl, // This is the court-ready PDF[m
+[31m-           originalDocumentUrl: document.url[m
+[31m-         });[m
+[31m-         [m
+[31m-         // Create audit trail[m
+[31m-         await createAuditTrail('DOCUMENT_SIGNED', {[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           method: 'electronic_signature',[m
+[31m-           placementMethod: 'click_to_place',[m
+[31m-           signaturePlacements: signaturePlacements,[m
+[31m-           signedPdfUrl: result.data.signedPdfUrl[m
+[32m+           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[32m+           ipAddress: ipAddress[m
+          });[m
+          [m
+[31m-         // Generate certificate[m
+[31m-         await generateCertificate(signatureRef2.id, signatureData);[m
+[31m-         [m
+[31m-         // Call callback[m
+[31m-         if (onSigned) {[m
+[31m-           onSigned({[m
+[31m-             documentId: document.id,[m
+[31m-             signatureId: signatureRef2.id,[m
+[31m-             signedAt: new Date(),[m
+[31m-             signedDocumentUrl: result.data.signedPdfUrl[m
+[31m-           });[m
+[32m+         if (result.data.success) {[m
+[31m -          // Use the embedded PDF URL[m
+[31m -          var signedPdfUrl = result.data.signedPdfUrl;[m
+[32m++          signedPdfUrl = result.data.signedPdfUrl;[m
+          }[m
+[31m-         [m
+[31m-         setShowPlacementModal(false);[m
+[31m-         alert('Document signed successfully! The signed PDF is ready for court filing.');[m
+[31m-         [m
+[31m-         if (onClose) onClose();[m
+[31m-       } else {[m
+[31m-         throw new Error('Failed to embed signature in PDF');[m
+[32m+       } catch (functionError) {[m
+[32m+         console.log('Firebase function not available, continuing without PDF embedding');[m
+[31m -        var signedPdfUrl = document.url; // Fallback to original URL[m
+        }[m
+        [m
+[31m-     } catch (error) {[m
+[31m-       console.error('Error signing document:', error);[m
+[32m+       // Create signature record[m
+[32m+       const signatureData = {[m
+[32m+         documentId: document.id,[m
+[32m+         documentName: document.name,[m
+[32m+         signerId: user.uid,[m
+[32m+         signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[32m+         signerEmail: user.email,[m
+[32m+         signatureImage: signatureUrl,[m
+[32m+         signaturePlacements: signaturePlacements.map(p => ({[m
+[32m+           page: p.page,[m
+[32m+           x: p.x,[m
+[32m+           y: p.y[m
+[32m+         })),[m
+[32m+         signedAt: serverTimestamp(),[m
+[32m+         ipAddress: ipAddress,[m
+[32m+         userAgent: navigator.userAgent,[m
+[32m+         documentHash: await generateDocumentHash(document.content || document.name),[m
+[32m+         certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[32m+         esignConsent: true,[m
+[32m+         agreedToTerms: true,[m
+[32m+         originalDocumentUrl: document.url,[m
+[31m -        signedDocumentUrl: signedPdfUrl || document.url[m
+[32m++        signedDocumentUrl: signedPdfUrl[m
+[32m+       };[m
+        [m
+[31m-       // Check if it's an authentication error[m
+[31m-       if (error.code === 'unauthenticated' || error.message.includes('401')) {[m
+[31m-         // Try without the Firebase function[m
+[31m-         console.log('Firebase function authentication failed, saving signature data only');[m
+[31m-         [m
+[31m-         // Save signature data without embedding[m
+[31m-         const signatureData = {[m
+[32m+       // Save signature record[m
+[32m+       const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[32m+       [m
+[32m+       // Update document[m
+[32m+       await updateDoc(doc(db, 'documents', document.id), {[m
+[32m+         signed: true,[m
+[32m+         signatureId: signatureRef2.id,[m
+[32m+         signedAt: serverTimestamp(),[m
+[31m -        signedDocumentUrl: signedPdfUrl || document.url,[m
+[32m++        signedDocumentUrl: signedPdfUrl,[m
+[32m+         originalDocumentUrl: document.url[m
+[32m+       });[m
+[32m+       [m
+[32m+       // Create audit trail[m
+[32m+       await createAuditTrail('DOCUMENT_SIGNED', {[m
+[32m+         signatureId: signatureRef2.id,[m
+[32m+         method: 'electronic_signature',[m
+[32m+         placementMethod: 'click_to_place',[m
+[32m+         signaturePlacements: signaturePlacements[m
+[32m+       });[m
+[32m+       [m
+[32m+       // Generate certificate[m
+[32m+       await generateCertificate(signatureRef2.id, signatureData);[m
+[32m+       [m
+[32m+       // Call callback[m
+[32m+       if (onSigned) {[m
+[32m+         onSigned({[m
+            documentId: document.id,[m
+[31m-           documentName: document.name,[m
+[31m-           signerId: user.uid,[m
+[31m-           signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,[m
+[31m-           signerEmail: user.email,[m
+[31m-           signatureImage: signatureUrl,[m
+[31m-           signaturePlacements: signaturePlacements.map(p => ({[m
+[31m-             page: p.page,[m
+[31m-             x: p.x,[m
+[31m-             y: p.y[m
+[31m-           })),[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           ipAddress: ipAddress,[m
+[31m-           userAgent: navigator.userAgent,[m
+[31m-           documentHash: await generateDocumentHash(document.content || document.name),[m
+[31m-           certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,[m
+[31m-           esignConsent: true,[m
+[31m-           agreedToTerms: true,[m
+[31m-           originalDocumentUrl: document.url,[m
+[31m-           signedDocumentUrl: document.url // Use original URL as fallback[m
+[31m-         };[m
+[31m-         [m
+[31m-         // Save signature record[m
+[31m-         const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);[m
+[31m-         [m
+[31m-         // Update document[m
+[31m-         await updateDoc(doc(db, 'documents', document.id), {[m
+[31m-           signed: true,[m
+[31m-           signatureId: signatureRef2.id,[m
+[31m-           signedAt: serverTimestamp(),[m
+[31m-           signedDocumentUrl: document.url,[m
+[31m-           originalDocumentUrl: document.url[m
+[31m-         });[m
+[31m-         [m
+[31m-         // Create audit trail[m
+[31m-         await createAuditTrail('DOCUMENT_SIGNED', {[m
+            signatureId: signatureRef2.id,[m
+[31m-           method: 'electronic_signature',[m
+[31m-           placementMethod: 'click_to_place',[m
+[31m-           signaturePlacements: signaturePlacements[m
+[32m+           signedAt: new Date(),[m
+[31m -          signedDocumentUrl: signedPdfUrl || document.url[m
+[32m++          signedDocumentUrl: signedPdfUrl[m
+          });[m
+[31m-         [m
+[31m-         // Generate certificate[m
+[31m-         await generateCertificate(signatureRef2.id, signatureData);[m
+[31m-         [m
+[31m-         // Call callback[m
+[31m-         if (onSigned) {[m
+[31m-           onSigned({[m
+[31m-             documentId: document.id,[m
+[31m-             signatureId: signatureRef2.id,[m
+[31m-             signedAt: new Date(),[m
+[31m-             signedDocumentUrl: document.url[m
+[31m-           });[m
+[31m-         }[m
+[31m-         [m
+[31m-         setShowPlacementModal(false);[m
+[31m-         alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');[m
+[31m-         [m
+[31m-         if (onClose) onClose();[m
+[32m+       }[m
+[32m+       [m
+[32m+       setShowPlacementModal(false);[m
+[32m+       [m
+[32m+       if (signedPdfUrl && signedPdfUrl !== document.url) {[m
+[32m+         alert('Document signed successfully! The signed PDF with embedded signature is ready for court filing.');[m
+        } else {[m
+[31m-         setError('Error signing document. Please try again.');[m
+[32m+         alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');[m
+        }[m
+[32m+       [m
+[32m+       if (onClose) onClose();[m
+[32m+       [m
+[32m+     } catch (error) {[m
+[32m+       console.error('Error signing document:', error);[m
+[32m+       setError('Error signing document. Please try again.');[m
+      } finally {[m
+        setIsSigning(false);[m
+      }[m
