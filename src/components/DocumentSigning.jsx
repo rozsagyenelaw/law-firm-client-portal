@@ -507,96 +507,130 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
             {/* PDF Preview Area */}
             <div className="flex-1 overflow-auto p-6 bg-gray-100">
               <div className="max-w-4xl mx-auto relative">
-                {/* Simplified PDF Display using iframe */}
-                <div className="relative bg-white shadow-lg" style={{ minHeight: '600px' }}>
-                  {document.url ? (
-                    <>
-                      {/* Use Google Docs Viewer as fallback for CORS issues */}
-                      <iframe
-                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(document.url)}&embedded=true`}
-                        className="w-full"
-                        style={{ height: '800px', border: 'none' }}
-                        title="PDF Document"
-                        onError={() => {
-                          // Fallback to direct embed if Google Docs viewer fails
-                          const iframe = document.querySelector('iframe');
-                          if (iframe) {
-                            iframe.src = document.url;
-                          }
-                        }}
-                      />
-                      
-                      {/* Clickable overlay for signature placement */}
-                      <div 
-                        className="absolute inset-0 cursor-crosshair bg-transparent"
-                        onClick={handlePdfClick}
-                        style={{ zIndex: 10, pointerEvents: 'auto' }}
-                      >
-                        {/* Show placed signatures */}
-                        {signaturePlacements
-                          .filter(p => p.page === currentPage)
-                          .map((placement) => (
-                            <div
-                              key={placement.id}
-                              className="absolute pointer-events-auto"
-                              style={{
-                                left: `${placement.x}%`,
-                                top: `${placement.y}%`,
-                                width: '150px',
-                                height: '50px',
-                                transform: 'translate(-50%, -50%)',
-                                zIndex: 20
-                              }}
-                            >
-                              <img 
-                                src={placement.signatureImage} 
-                                alt="Signature" 
-                                className="w-full h-full object-contain"
-                                style={{ 
-                                  filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.2))',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                                  pointerEvents: 'none'
-                                }}
-                              />
-                              
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removePlacement(placement.id);
-                                }}
-                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                                style={{ zIndex: 30, pointerEvents: 'auto' }}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
+                {/* Simplified Document Preview */}
+                <div className="relative bg-white shadow-lg">
+                  {/* Document representation - clickable area */}
+                  <div 
+                    className="relative bg-white border-2 border-gray-200 rounded-lg overflow-hidden"
+                    style={{ minHeight: '850px' }} 
+                  >
+                    {/* Document header */}
+                    <div className="bg-gray-50 border-b border-gray-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <FileText className="h-6 w-6 text-gray-500 mr-2" />
+                          <span className="font-medium text-gray-900">{document.name}</span>
+                        </div>
+                        <span className="text-sm text-gray-500">Legal Document</span>
                       </div>
-                    </>
-                  ) : (
-                    <div className="p-12 text-center">
-                      <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">
-                        {document.name}
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        Click anywhere to place your signature
-                      </p>
                     </div>
-                  )}
-                  
-                  {/* Alternative: Simple placement area if iframe doesn't work */}
-                  {!document.url && (
+
+                    {/* Document body - clickable area for signatures */}
                     <div 
-                      className="w-full h-full min-h-[600px] border-2 border-dashed border-gray-300 flex items-center justify-center cursor-crosshair"
+                      className="relative p-8 cursor-crosshair"
+                      style={{ minHeight: '750px', backgroundColor: '#fafafa' }}
                       onClick={handlePdfClick}
                     >
-                      <div className="text-center pointer-events-none">
-                        <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-600">Click to place signature</p>
+                      {/* Document lines to simulate a legal document */}
+                      <div className="space-y-4 pointer-events-none">
+                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                        <br />
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="h-4 bg-gray-200 rounded w-4/5"></div>
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                        <br />
+                        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                        
+                        {/* Signature line indicator */}
+                        <div className="mt-16 pt-8 border-t-2 border-gray-300">
+                          <div className="text-sm text-gray-500 pointer-events-none">
+                            Signature Line - Click here to place your signature
+                          </div>
+                          <div className="mt-2 border-b-2 border-gray-400 w-64"></div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* Show placed signatures */}
+                      {signaturePlacements
+                        .filter(p => p.page === currentPage)
+                        .map((placement) => (
+                          <div
+                            key={placement.id}
+                            className="absolute"
+                            style={{
+                              left: `${placement.x}%`,
+                              top: `${placement.y}%`,
+                              width: '150px',
+                              height: '50px',
+                              transform: 'translate(-50%, -50%)',
+                              zIndex: 20
+                            }}
+                          >
+                            <img 
+                              src={placement.signatureImage} 
+                              alt="Signature" 
+                              className="w-full h-full object-contain"
+                              style={{ 
+                                filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.3))',
+                                backgroundColor: 'rgba(255, 255, 255, 0.9)'
+                              }}
+                            />
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removePlacement(placement.id);
+                              }}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"
+                              style={{ zIndex: 30 }}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+
+                      {/* Instructions overlay when no signatures placed */}
+                      {signaturePlacements.filter(p => p.page === currentPage).length === 0 && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="bg-white bg-opacity-90 rounded-lg p-6 shadow-lg max-w-md text-center">
+                            <MousePointer className="h-12 w-12 text-blue-500 mx-auto mb-3" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                              Click to Place Signature
+                            </h3>
+                            <p className="text-sm text-gray-600">
+                              Click anywhere on the document where you want your signature to appear.
+                              Typically, this is near the signature line at the bottom.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    {/* View actual PDF link */}
+                    <div className="absolute top-4 right-4">
+                      {document.url && (
+                        <a 
+                          href={document.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-700 flex items-center bg-white px-3 py-1 rounded shadow"
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          View PDF
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
