@@ -5,8 +5,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import app, { db, storage } from '../firebase';
 
-// For now, let's simplify and not use PDF.js to avoid CORS issues
-
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
   const [isDrawing, setIsDrawing] = useState(false);
@@ -48,7 +46,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     }
   }, [showSigningModal]);
 
-  // Handle clicking on the PDF to place signature
+  // Handle clicking on the PDF overlay to place signature
   const handlePdfClick = (e) => {
     if (!signature) {
       setError('Please draw your signature first');
@@ -68,6 +66,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     };
     
     setSignaturePlacements([...signaturePlacements, newPlacement]);
+    setError(''); // Clear any errors
   };
 
   // Remove a signature placement
@@ -208,7 +207,8 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
           signedPdfUrl = result.data.signedPdfUrl;
         }
       } catch (functionError) {
-        console.log('Firebase function not available, continuing without PDF embedding');
+        console.log('Firebase function error:', functionError);
+        // Continue without PDF embedding - signature is still saved
       }
       
       // Create signature record
@@ -273,7 +273,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
       if (signedPdfUrl && signedPdfUrl !== document.url) {
         alert('Document signed successfully! The signed PDF with embedded signature is ready for court filing.');
       } else {
-        alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');
+        alert('Document signed successfully! The signature has been saved.');
       }
       
       if (onClose) onClose();
@@ -496,8 +496,8 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                   <div className="text-sm">
                     <p className="font-medium text-yellow-900 mb-1">Instructions</p>
                     <p className="text-yellow-700">
-                      Navigate to the page with the signature line and click where you want to place your signature.
-                      You can place multiple signatures if needed.
+                      The PDF will open below. Click directly on the PDF where you want to place your signature.
+                      You can place multiple signatures if needed. Use the page navigation to move between pages.
                     </p>
                   </div>
                 </div>
@@ -506,131 +506,92 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
 
             {/* PDF Preview Area */}
             <div className="flex-1 overflow-auto p-6 bg-gray-100">
-              <div className="max-w-4xl mx-auto relative">
-                {/* Simplified Document Preview */}
+              <div className="max-w-4xl mx-auto">
+                {/* PDF Container */}
                 <div className="relative bg-white shadow-lg">
-                  {/* Document representation - clickable area */}
-                  <div 
-                    className="relative bg-white border-2 border-gray-200 rounded-lg overflow-hidden"
-                    style={{ minHeight: '850px' }} 
-                  >
-                    {/* Document header */}
-                    <div className="bg-gray-50 border-b border-gray-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <FileText className="h-6 w-6 text-gray-500 mr-2" />
-                          <span className="font-medium text-gray-900">{document.name}</span>
-                        </div>
-                        <span className="text-sm text-gray-500">Legal Document</span>
-                      </div>
-                    </div>
-
-                    {/* Document body - clickable area for signatures */}
-                    <div 
-                      className="relative p-8 cursor-crosshair"
-                      style={{ minHeight: '750px', backgroundColor: '#fafafa' }}
-                      onClick={handlePdfClick}
-                    >
-                      {/* Document lines to simulate a legal document */}
-                      <div className="space-y-4 pointer-events-none">
-                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                        <br />
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                        <div className="h-4 bg-gray-200 rounded w-4/5"></div>
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                        <br />
-                        <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                        <div className="h-4 bg-gray-200 rounded w-full"></div>
-                        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                        
-                        {/* Signature line indicator */}
-                        <div className="mt-16 pt-8 border-t-2 border-gray-300">
-                          <div className="text-sm text-gray-500 pointer-events-none">
-                            Signature Line - Click here to place your signature
-                          </div>
-                          <div className="mt-2 border-b-2 border-gray-400 w-64"></div>
-                          <div className="mt-1 text-xs text-gray-500">
-                            {userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Show placed signatures */}
-                      {signaturePlacements
-                        .filter(p => p.page === currentPage)
-                        .map((placement) => (
-                          <div
-                            key={placement.id}
-                            className="absolute"
-                            style={{
-                              left: `${placement.x}%`,
-                              top: `${placement.y}%`,
-                              width: '150px',
-                              height: '50px',
-                              transform: 'translate(-50%, -50%)',
-                              zIndex: 20
-                            }}
-                          >
-                            <img 
-                              src={placement.signatureImage} 
-                              alt="Signature" 
-                              className="w-full h-full object-contain"
-                              style={{ 
-                                filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.3))',
-                                backgroundColor: 'rgba(255, 255, 255, 0.9)'
+                  {/* Embed the actual PDF */}
+                  {document.url && (
+                    <div className="relative">
+                      <embed
+                        src={`${document.url}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0`}
+                        type="application/pdf"
+                        className="w-full"
+                        style={{ height: '850px' }}
+                        title="PDF Document"
+                      />
+                      
+                      {/* Transparent overlay for click detection */}
+                      <div 
+                        className="absolute inset-0"
+                        onClick={handlePdfClick}
+                        style={{ 
+                          cursor: 'crosshair',
+                          backgroundColor: 'transparent',
+                          zIndex: 10
+                        }}
+                      >
+                        {/* Show placed signatures */}
+                        {signaturePlacements
+                          .filter(p => p.page === currentPage)
+                          .map((placement) => (
+                            <div
+                              key={placement.id}
+                              className="absolute pointer-events-none"
+                              style={{
+                                left: `${placement.x}%`,
+                                top: `${placement.y}%`,
+                                width: '150px',
+                                height: '50px',
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 20
                               }}
-                            />
-                            
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removePlacement(placement.id);
-                              }}
-                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"
-                              style={{ zIndex: 30 }}
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-
-                      {/* Instructions overlay when no signatures placed */}
-                      {signaturePlacements.filter(p => p.page === currentPage).length === 0 && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="bg-white bg-opacity-90 rounded-lg p-6 shadow-lg max-w-md text-center">
-                            <MousePointer className="h-12 w-12 text-blue-500 mx-auto mb-3" />
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">
-                              Click to Place Signature
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              Click anywhere on the document where you want your signature to appear.
-                              Typically, this is near the signature line at the bottom.
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                              <img 
+                                src={placement.signatureImage} 
+                                alt="Signature" 
+                                className="w-full h-full object-contain"
+                                style={{ 
+                                  filter: 'drop-shadow(2px 2px 3px rgba(0,0,0,0.3))',
+                                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                  padding: '2px'
+                                }}
+                              />
+                              
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removePlacement(placement.id);
+                                }}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 pointer-events-auto"
+                                style={{ zIndex: 30 }}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
                     </div>
-
-                    {/* View actual PDF link */}
-                    <div className="absolute top-4 right-4">
-                      {document.url && (
-                        <a 
-                          href={document.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-700 flex items-center bg-white px-3 py-1 rounded shadow"
-                        >
-                          <FileText className="h-4 w-4 mr-1" />
-                          View PDF
-                        </a>
-                      )}
+                  )}
+                  
+                  {/* Fallback if PDF doesn't load */}
+                  {!document.url && (
+                    <div className="p-12 text-center">
+                      <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">No PDF URL available</p>
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                {/* Alternative link to view PDF */}
+                <div className="mt-4 text-center">
+                  <a 
+                    href={document.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    Having trouble? Open PDF in new tab
+                  </a>
                 </div>
               </div>
             </div>
@@ -640,32 +601,35 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
               {/* Page Navigation */}
               <div className="flex items-center justify-between mb-4">
                 <button
-                  onClick={() => {
-                    if (currentPage > 1) {
-                      setCurrentPage(currentPage - 1);
-                    }
-                  }}
-                  disabled={currentPage === 1 || isLoadingPdf}
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
                   className="flex items-center px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
+                  Previous Page
                 </button>
                 
                 <div className="text-sm text-gray-600">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage}
+                  <span className="mx-2">|</span>
+                  <button
+                    onClick={() => {
+                      const pageNum = prompt('Enter page number:');
+                      if (pageNum && !isNaN(pageNum)) {
+                        setCurrentPage(parseInt(pageNum));
+                      }
+                    }}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    Go to page
+                  </button>
                 </div>
                 
                 <button
-                  onClick={() => {
-                    if (currentPage < totalPages) {
-                      setCurrentPage(currentPage + 1);
-                    }
-                  }}
-                  disabled={currentPage === totalPages || isLoadingPdf}
-                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
-                  Next
+                  Next Page
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </button>
               </div>
@@ -686,12 +650,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                     </button>
                   </div>
                   <div className="mt-2 text-xs text-green-700">
-                    {signaturePlacements.map((p, i) => (
-                      <span key={p.id}>
-                        Page {p.page}
-                        {i < signaturePlacements.length - 1 ? ', ' : ''}
-                      </span>
-                    ))}
+                    Pages with signatures: {[...new Set(signaturePlacements.map(p => p.page))].join(', ')}
                   </div>
                 </div>
               )}
