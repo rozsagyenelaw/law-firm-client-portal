@@ -4,10 +4,8 @@ import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/fi
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import app, { db, storage } from '../firebase';
-import * as pdfjsLib from 'pdfjs-dist';
 
-// Set PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// For now, let's simplify and not use PDF.js to avoid CORS issues
 
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
@@ -25,9 +23,6 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
   const [totalPages, setTotalPages] = useState(1);
   const [signaturePlacements, setSignaturePlacements] = useState([]);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
-  const [pdfDoc, setPdfDoc] = useState(null);
-  const [pageImage, setPageImage] = useState(null);
-  const pdfCanvasRef = useRef(null);
   
   // Get user's IP for audit trail
   useEffect(() => {
@@ -52,75 +47,6 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
       ctx.lineJoin = 'round';
     }
   }, [showSigningModal]);
-
-  // Load PDF when placement modal opens
-  useEffect(() => {
-    if (showPlacementModal && document.url) {
-      loadPdf();
-    }
-  }, [showPlacementModal]);
-
-  // Render current page when page changes
-  useEffect(() => {
-    if (pdfDoc && showPlacementModal) {
-      renderPage(currentPage);
-    }
-  }, [currentPage, pdfDoc]);
-
-  // Load PDF document
-  const loadPdf = async () => {
-    if (!document.url) return;
-    
-    setIsLoadingPdf(true);
-    try {
-      // Load the PDF document
-      const loadingTask = pdfjsLib.getDocument(document.url);
-      const pdf = await loadingTask.promise;
-      setPdfDoc(pdf);
-      setTotalPages(pdf.numPages);
-      
-      // Render the first page
-      await renderPage(1);
-    } catch (error) {
-      console.error('Error loading PDF:', error);
-      setError('Error loading PDF. You can still place signatures.');
-    } finally {
-      setIsLoadingPdf(false);
-    }
-  };
-
-  // Render a specific page of the PDF
-  const renderPage = async (pageNum) => {
-    if (!pdfDoc) return;
-    
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const canvas = pdfCanvasRef.current;
-      
-      if (!canvas) return;
-      
-      const context = canvas.getContext('2d');
-      const viewport = page.getViewport({ scale: 1.5 });
-      
-      // Set canvas dimensions
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      
-      // Render PDF page into canvas context
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport
-      };
-      
-      await page.render(renderContext).promise;
-      
-      // Convert canvas to image for display
-      const imageData = canvas.toDataURL();
-      setPageImage(imageData);
-    } catch (error) {
-      console.error('Error rendering page:', error);
-    }
-  };
 
   // Handle clicking on the PDF to place signature
   const handlePdfClick = (e) => {
@@ -581,31 +507,30 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
             {/* PDF Preview Area */}
             <div className="flex-1 overflow-auto p-6 bg-gray-100">
               <div className="max-w-4xl mx-auto relative">
-                {/* Hidden canvas for PDF rendering */}
-                <canvas ref={pdfCanvasRef} style={{ display: 'none' }} />
-                
-                {/* PDF Display */}
-                <div className="relative bg-white shadow-lg">
-                  {isLoadingPdf ? (
-                    <div className="flex items-center justify-center p-12">
-                      <Loader className="h-8 w-8 animate-spin text-blue-600" />
-                      <span className="ml-2">Loading PDF...</span>
-                    </div>
-                  ) : pageImage ? (
-                    <div className="relative">
-                      {/* Display the PDF page as an image */}
-                      <img 
-                        src={pageImage} 
-                        alt={`Page ${currentPage}`}
+                {/* Simplified PDF Display using iframe */}
+                <div className="relative bg-white shadow-lg" style={{ minHeight: '600px' }}>
+                  {document.url ? (
+                    <>
+                      {/* Use Google Docs Viewer as fallback for CORS issues */}
+                      <iframe
+                        src={`https://docs.google.com/viewer?url=${encodeURIComponent(document.url)}&embedded=true`}
                         className="w-full"
-                        style={{ maxWidth: '100%', height: 'auto' }}
+                        style={{ height: '800px', border: 'none' }}
+                        title="PDF Document"
+                        onError={() => {
+                          // Fallback to direct embed if Google Docs viewer fails
+                          const iframe = document.querySelector('iframe');
+                          if (iframe) {
+                            iframe.src = document.url;
+                          }
+                        }}
                       />
                       
                       {/* Clickable overlay for signature placement */}
                       <div 
-                        className="absolute inset-0 cursor-crosshair"
+                        className="absolute inset-0 cursor-crosshair bg-transparent"
                         onClick={handlePdfClick}
-                        style={{ zIndex: 10 }}
+                        style={{ zIndex: 10, pointerEvents: 'auto' }}
                       >
                         {/* Show placed signatures */}
                         {signaturePlacements
@@ -613,7 +538,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                           .map((placement) => (
                             <div
                               key={placement.id}
-                              className="absolute"
+                              className="absolute pointer-events-auto"
                               style={{
                                 left: `${placement.x}%`,
                                 top: `${placement.y}%`,
@@ -629,7 +554,8 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                                 className="w-full h-full object-contain"
                                 style={{ 
                                   filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.2))',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.8)'
+                                  backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                  pointerEvents: 'none'
                                 }}
                               />
                               
@@ -639,14 +565,14 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                                   removePlacement(placement.id);
                                 }}
                                 className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                                style={{ zIndex: 30 }}
+                                style={{ zIndex: 30, pointerEvents: 'auto' }}
                               >
                                 <X className="h-3 w-3" />
                               </button>
                             </div>
                           ))}
                       </div>
-                    </div>
+                    </>
                   ) : (
                     <div className="p-12 text-center">
                       <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
@@ -654,18 +580,21 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                         {document.name}
                       </h4>
                       <p className="text-sm text-gray-600">
-                        Click to place your signature
+                        Click anywhere to place your signature
                       </p>
-                      {document.url && (
-                        <a 
-                          href={document.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="mt-4 inline-block text-blue-600 hover:text-blue-700 text-sm"
-                        >
-                          Open PDF in new tab
-                        </a>
-                      )}
+                    </div>
+                  )}
+                  
+                  {/* Alternative: Simple placement area if iframe doesn't work */}
+                  {!document.url && (
+                    <div 
+                      className="w-full h-full min-h-[600px] border-2 border-dashed border-gray-300 flex items-center justify-center cursor-crosshair"
+                      onClick={handlePdfClick}
+                    >
+                      <div className="text-center pointer-events-none">
+                        <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">Click to place signature</p>
+                      </div>
                     </div>
                   )}
                 </div>
