@@ -895,9 +895,10 @@ const ClientPortal = () => {
                         </div>
                         <div className="flex items-center space-x-4">
                           <span className="text-sm text-gray-500">{doc.size}</span>
-                          {/* Sign button for unsigned documents */}
+                          {/* Sign button for unsigned documents - FIXED WITH type="button" */}
                           {!doc.signed && (
                             <button
+                              type="button"
                               onClick={() => {
                                 setSigningDocument(doc);
                                 setShowSigningModal(true);
