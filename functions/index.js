@@ -7,7 +7,7 @@ const crypto = require('crypto');
 admin.initializeApp();
 
 exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
-  // Verify authentication
+  // Verify authentication - THIS LINE IS NOW ACTIVE (NOT COMMENTED)
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
