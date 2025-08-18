@@ -509,14 +509,14 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
               <div className="max-w-4xl mx-auto">
                 {/* PDF Container */}
                 <div className="relative bg-white shadow-lg">
-                  {/* Embed the actual PDF */}
+                  {/* Use iframe with full PDF */}
                   {document.url && (
                     <div className="relative">
-                      <embed
-                        src={`${document.url}#page=${currentPage}&toolbar=0&navpanes=0&scrollbar=0`}
-                        type="application/pdf"
+                      {/* PDF Viewer - shows ALL pages */}
+                      <iframe
+                        src={document.url}
                         className="w-full"
-                        style={{ height: '850px' }}
+                        style={{ height: '850px', border: 'none' }}
                         title="PDF Document"
                       />
                       
@@ -526,47 +526,60 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                         onClick={handlePdfClick}
                         style={{ 
                           cursor: 'crosshair',
-                          backgroundColor: 'transparent',
+                          backgroundColor: 'rgba(255, 255, 255, 0.01)', // Nearly transparent
                           zIndex: 10
                         }}
                       >
+                        {/* Instructions when no signatures placed */}
+                        {signaturePlacements.filter(p => p.page === currentPage).length === 0 && (
+                          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-100 border border-blue-300 rounded-lg px-4 py-2 pointer-events-none">
+                            <p className="text-sm text-blue-900 font-medium">
+                              Click anywhere on the document to place your signature
+                            </p>
+                          </div>
+                        )}
+                        
                         {/* Show placed signatures */}
                         {signaturePlacements
                           .filter(p => p.page === currentPage)
                           .map((placement) => (
                             <div
                               key={placement.id}
-                              className="absolute pointer-events-none"
+                              className="absolute"
                               style={{
                                 left: `${placement.x}%`,
                                 top: `${placement.y}%`,
-                                width: '150px',
-                                height: '50px',
+                                width: '180px',
+                                height: '60px',
                                 transform: 'translate(-50%, -50%)',
-                                zIndex: 20
+                                zIndex: 20,
+                                pointerEvents: 'none'
                               }}
                             >
-                              <img 
-                                src={placement.signatureImage} 
-                                alt="Signature" 
-                                className="w-full h-full object-contain"
-                                style={{ 
-                                  filter: 'drop-shadow(2px 2px 3px rgba(0,0,0,0.3))',
-                                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                                  padding: '2px'
-                                }}
-                              />
-                              
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removePlacement(placement.id);
-                                }}
-                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 pointer-events-auto"
-                                style={{ zIndex: 30 }}
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
+                              <div className="relative w-full h-full">
+                                <img 
+                                  src={placement.signatureImage} 
+                                  alt="Signature" 
+                                  className="w-full h-full object-contain"
+                                  style={{ 
+                                    filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.4))',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                    padding: '4px',
+                                    borderRadius: '2px'
+                                  }}
+                                />
+                                
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePlacement(placement.id);
+                                  }}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"
+                                  style={{ zIndex: 30, pointerEvents: 'auto' }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
                           ))}
                       </div>
@@ -582,16 +595,23 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                   )}
                 </div>
 
-                {/* Alternative link to view PDF */}
-                <div className="mt-4 text-center">
-                  <a 
-                    href={document.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    Having trouble? Open PDF in new tab
-                  </a>
+                {/* PDF Navigation Help */}
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      <strong>Tip:</strong> Scroll down in the PDF viewer to see all pages. 
+                      The PDF shows all pages - scroll to find signature lines.
+                    </div>
+                    <a 
+                      href={document.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-700 flex items-center"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Open full PDF
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
