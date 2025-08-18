@@ -3,7 +3,7 @@ import { FileText, PenTool, Check, Download, AlertCircle, Lock, Calendar, User, 
 import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import app, { db, storage } from '../firebase';
+import app, { db, storage, auth } from '../firebase';
 
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
@@ -190,6 +190,16 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
         const functions = getFunctions(app);
         const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');
         
+        // Ensure user is authenticated
+        if (!auth.currentUser) {
+          console.error('No authenticated user');
+          throw new Error('User not authenticated');
+        }
+        
+        // Force token refresh to ensure authentication
+        await auth.currentUser.getIdToken(true);
+        console.log('Calling Firebase function with authenticated user:', auth.currentUser.uid);
+        
         const result = await embedSignature({
           documentId: document.id,
           pdfUrl: document.url,
@@ -205,6 +215,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
         
         if (result.data.success) {
           signedPdfUrl = result.data.signedPdfUrl;
+          console.log('Signed PDF created:', signedPdfUrl);
         }
       } catch (functionError) {
         console.log('Firebase function error:', functionError);
