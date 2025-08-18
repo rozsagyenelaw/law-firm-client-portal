@@ -887,7 +887,7 @@ const ClientPortal = () => {
                               Uploaded {doc.uploadDate?.toDate ? doc.uploadDate.toDate().toLocaleDateString() : 'Recently'}
                               {doc.signed && (
                                 <span className="ml-2 text-green-600">
-                                  • Signed on {doc.signedAt?.toLocaleDateString() || 'Recently'}
+                                  - Signed on {doc.signedAt?.toDate ? doc.signedAt.toDate().toLocaleDateString() : 'Recently'}
                                 </span>
                               )}
                             </p>
