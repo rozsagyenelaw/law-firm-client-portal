@@ -4,10 +4,6 @@ import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/fi
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage } from '../firebase';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Set PDF.js worker - USE A DIFFERENT CDN OR LOCAL FILE
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
@@ -19,14 +15,12 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
   const [isSigning, setIsSigning] = useState(false);
   const [error, setError] = useState('');
   const canvasRef = useRef(null);
-  const pdfCanvasRef = useRef(null);
   
   // PDF preview states
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [signaturePlacements, setSignaturePlacements] = useState([]);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
-  const [pdfDoc, setPdfDoc] = useState(null);
   
   // Get user's IP for audit trail
   useEffect(() => {
@@ -52,80 +46,18 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     }
   }, [showSigningModal]);
 
-  // Load PDF when placement modal opens
-  useEffect(() => {
-    if (showPlacementModal && document.url) {
-      loadPdfInfo();
-    }
-  }, [showPlacementModal]);
-
-  // Load PDF info
-  const loadPdfInfo = async () => {
-    setIsLoadingPdf(true);
-    try {
-      const loadingTask = pdfjsLib.getDocument({
-        url: document.url,
-        withCredentials: false,
-        disableAutoFetch: false,
-        disableStream: false
-      });
-      const pdf = await loadingTask.promise;
-      setPdfDoc(pdf);
-      setTotalPages(pdf.numPages);
-      setCurrentPage(1);
-      renderPage(1, pdf);
-    } catch (error) {
-      console.error('Error loading PDF:', error);
-      setError('Failed to load PDF for preview');
-    } finally {
-      setIsLoadingPdf(false);
-    }
-  };
-
-  // Render PDF page
-  const renderPage = async (pageNum, pdf = pdfDoc) => {
-    if (!pdf || !pdfCanvasRef.current) return;
-    
-    try {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
-      const canvas = pdfCanvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport
-      };
-      
-      await page.render(renderContext).promise;
-    } catch (error) {
-      console.error('Error rendering page:', error);
-    }
-  };
-
-  // Handle page navigation
-  const goToPage = (pageNum) => {
-    if (pageNum >= 1 && pageNum <= totalPages) {
-      setCurrentPage(pageNum);
-      renderPage(pageNum);
-    }
-  };
-
   // Handle clicking on the PDF to place signature
   const handlePdfClick = (e) => {
-    const canvas = pdfCanvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100; // Store as percentage
+    const y = ((e.clientY - rect.top) / rect.height) * 100; // Store as percentage
     
     const newPlacement = {
       page: currentPage,
       x: x,
       y: y,
-      id: Date.now()
+      id: Date.now(),
+      signatureImage: signature // Store the signature image with the placement
     };
     
     setSignaturePlacements([...signaturePlacements, newPlacement]);
@@ -194,6 +126,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     
     setShowSigningModal(false);
     setShowPlacementModal(true);
+    setError('');
   };
   
   // Generate document hash for integrity
@@ -244,79 +177,99 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
       const uploadResult = await uploadBytes(signatureRef, signatureBlob);
       const signatureUrl = await getDownloadURL(uploadResult.ref);
       
-      // Call Firebase Function to embed signature in PDF
-      const functions = getFunctions();
-      const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');
+      // Try to call Firebase Function to embed signature in PDF
+      try {
+        const functions = getFunctions();
+        const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');
+        
+        const result = await embedSignature({
+          documentId: document.id,
+          pdfUrl: document.url,
+          signatureUrl: signatureUrl,
+          placements: signaturePlacements.map(p => ({
+            page: p.page,
+            x: p.x,
+            y: p.y
+          })),
+          signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+          ipAddress: ipAddress
+        });
+        
+        if (result.data.success) {
+          // Use the embedded PDF URL
+          var signedPdfUrl = result.data.signedPdfUrl;
+        }
+      } catch (functionError) {
+        console.log('Firebase function not available, continuing without PDF embedding');
+        var signedPdfUrl = document.url; // Fallback to original URL
+      }
       
-      const result = await embedSignature({
+      // Create signature record
+      const signatureData = {
         documentId: document.id,
-        pdfUrl: document.url,
-        signatureUrl: signatureUrl,
-        placements: signaturePlacements,
+        documentName: document.name,
+        signerId: user.uid,
         signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
-        ipAddress: ipAddress
+        signerEmail: user.email,
+        signatureImage: signatureUrl,
+        signaturePlacements: signaturePlacements.map(p => ({
+          page: p.page,
+          x: p.x,
+          y: p.y
+        })),
+        signedAt: serverTimestamp(),
+        ipAddress: ipAddress,
+        userAgent: navigator.userAgent,
+        documentHash: await generateDocumentHash(document.content || document.name),
+        certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,
+        esignConsent: true,
+        agreedToTerms: true,
+        originalDocumentUrl: document.url,
+        signedDocumentUrl: signedPdfUrl || document.url
+      };
+      
+      // Save signature record
+      const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);
+      
+      // Update document
+      await updateDoc(doc(db, 'documents', document.id), {
+        signed: true,
+        signatureId: signatureRef2.id,
+        signedAt: serverTimestamp(),
+        signedDocumentUrl: signedPdfUrl || document.url,
+        originalDocumentUrl: document.url
       });
       
-      if (result.data.success) {
-        // Create signature record with the signed PDF URL
-        const signatureData = {
+      // Create audit trail
+      await createAuditTrail('DOCUMENT_SIGNED', {
+        signatureId: signatureRef2.id,
+        method: 'electronic_signature',
+        placementMethod: 'click_to_place',
+        signaturePlacements: signaturePlacements
+      });
+      
+      // Generate certificate
+      await generateCertificate(signatureRef2.id, signatureData);
+      
+      // Call callback
+      if (onSigned) {
+        onSigned({
           documentId: document.id,
-          documentName: document.name,
-          signerId: user.uid,
-          signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
-          signerEmail: user.email,
-          signatureImage: signatureUrl,
-          signaturePlacements: signaturePlacements,
-          signedAt: serverTimestamp(),
-          ipAddress: ipAddress,
-          userAgent: navigator.userAgent,
-          documentHash: await generateDocumentHash(document.content || document.name),
-          certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,
-          esignConsent: true,
-          agreedToTerms: true,
-          originalDocumentUrl: document.url,
-          signedDocumentUrl: result.data.signedPdfUrl // The PDF with embedded signature
-        };
-        
-        // Save signature record
-        const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);
-        
-        // Update document with signed PDF URL
-        await updateDoc(doc(db, 'documents', document.id), {
-          signed: true,
           signatureId: signatureRef2.id,
-          signedAt: serverTimestamp(),
-          signedDocumentUrl: result.data.signedPdfUrl, // This is the court-ready PDF
-          originalDocumentUrl: document.url
+          signedAt: new Date(),
+          signedDocumentUrl: signedPdfUrl || document.url
         });
-        
-        // Create audit trail
-        await createAuditTrail('DOCUMENT_SIGNED', {
-          signatureId: signatureRef2.id,
-          method: 'electronic_signature',
-          placementMethod: 'click_to_place',
-          signaturePlacements: signaturePlacements,
-          signedPdfUrl: result.data.signedPdfUrl
-        });
-        
-        // Generate certificate
-        await generateCertificate(signatureRef2.id, signatureData);
-        
-        // Call callback
-        if (onSigned) {
-          onSigned({
-            documentId: document.id,
-            signatureId: signatureRef2.id,
-            signedAt: new Date(),
-            signedDocumentUrl: result.data.signedPdfUrl
-          });
-        }
-        
-        setShowPlacementModal(false);
-        alert('Document signed successfully! The signed PDF is ready for court filing.');
-        
-        if (onClose) onClose();
       }
+      
+      setShowPlacementModal(false);
+      
+      if (signedPdfUrl && signedPdfUrl !== document.url) {
+        alert('Document signed successfully! The signed PDF with embedded signature is ready for court filing.');
+      } else {
+        alert('Document signed successfully! Note: To get a PDF with embedded signatures for court filing, please contact your attorney.');
+      }
+      
+      if (onClose) onClose();
       
     } catch (error) {
       console.error('Error signing document:', error);
@@ -340,8 +293,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
       signedAt: new Date().toISOString(),
       verificationCode: await generateDocumentHash(signatureId + Date.now()),
       legalNotice: 'This certificate confirms that the above-named individual has electronically signed the referenced document in accordance with the ESIGN Act and UETA.',
-      courtCompliance: 'This electronic signature is legally binding and admissible in court proceedings.',
-      signedDocumentUrl: signatureData.signedDocumentUrl
+      courtCompliance: 'This electronic signature is legally binding and admissible in court proceedings.'
     };
     
     await addDoc(collection(db, 'certificates'), certificate);
@@ -547,26 +499,29 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
 
             {/* PDF Preview Area */}
             <div className="flex-1 overflow-auto p-6 bg-gray-100">
-              {isLoadingPdf ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <div className="max-w-4xl mx-auto relative">
-                  <div className="relative bg-white shadow-lg">
-                    <canvas
-                      ref={pdfCanvasRef}
-                      className="w-full cursor-crosshair"
-                      onClick={handlePdfClick}
-                    />
-                    
-                    {/* Show placed signatures */}
+              <div className="max-w-4xl mx-auto relative">
+                {/* PDF Viewer using iframe */}
+                <div className="relative bg-white shadow-lg" style={{ paddingBottom: '141.4%' /* A4 ratio */ }}>
+                  <iframe
+                    src={`${document.url}#page=${currentPage}`}
+                    className="absolute inset-0 w-full h-full"
+                    style={{ border: 'none' }}
+                    title="PDF Document"
+                  />
+                  
+                  {/* Overlay for click detection */}
+                  <div 
+                    className="absolute inset-0 cursor-crosshair"
+                    onClick={handlePdfClick}
+                    style={{ zIndex: 10 }}
+                  >
+                    {/* Show placed signatures WITH THE ACTUAL SIGNATURE IMAGE */}
                     {signaturePlacements
                       .filter(p => p.page === currentPage)
                       .map((placement) => (
                         <div
                           key={placement.id}
-                          className="absolute bg-blue-500 bg-opacity-20 border-2 border-blue-500"
+                          className="absolute"
                           style={{
                             left: `${placement.x}%`,
                             top: `${placement.y}%`,
@@ -575,6 +530,17 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                             transform: 'translate(-50%, -50%)'
                           }}
                         >
+                          {/* Show the actual signature image */}
+                          <img 
+                            src={placement.signatureImage} 
+                            alt="Signature" 
+                            className="w-full h-full object-contain"
+                            style={{ 
+                              filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.2))'
+                            }}
+                          />
+                          
+                          {/* Remove button */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -584,14 +550,11 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                           >
                             <X className="h-3 w-3" />
                           </button>
-                          <div className="text-xs text-blue-700 text-center mt-3">
-                            Signature #{signaturePlacements.findIndex(p => p.id === placement.id) + 1}
-                          </div>
                         </div>
                       ))}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Bottom Controls */}
@@ -599,7 +562,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
               {/* Page Navigation */}
               <div className="flex items-center justify-between mb-4">
                 <button
-                  onClick={() => goToPage(currentPage - 1)}
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
                   className="flex items-center px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
                 >
@@ -608,13 +571,12 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                 </button>
                 
                 <div className="text-sm text-gray-600">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of {totalPages || '?'}
                 </div>
                 
                 <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Next
                   <ChevronRight className="h-4 w-4 ml-1" />
