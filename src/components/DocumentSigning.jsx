@@ -5,10 +5,9 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db, storage } from '../firebase';
 import * as pdfjsLib from 'pdfjs-dist';
-import PdfViewer from './PdfViewer';
 
-// Set PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set PDF.js worker - USE A DIFFERENT CDN OR LOCAL FILE
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
 
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
   const [signature, setSignature] = useState('');
@@ -20,12 +19,14 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
   const [isSigning, setIsSigning] = useState(false);
   const [error, setError] = useState('');
   const canvasRef = useRef(null);
+  const pdfCanvasRef = useRef(null);
   
   // PDF preview states
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [signaturePlacements, setSignaturePlacements] = useState([]);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+  const [pdfDoc, setPdfDoc] = useState(null);
   
   // Get user's IP for audit trail
   useEffect(() => {
@@ -51,21 +52,28 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     }
   }, [showSigningModal]);
 
-  // Load PDF info when placement modal opens
+  // Load PDF when placement modal opens
   useEffect(() => {
     if (showPlacementModal && document.url) {
       loadPdfInfo();
     }
   }, [showPlacementModal]);
 
-  // Load PDF page count
+  // Load PDF info
   const loadPdfInfo = async () => {
     setIsLoadingPdf(true);
     try {
-      const loadingTask = pdfjsLib.getDocument(document.url);
+      const loadingTask = pdfjsLib.getDocument({
+        url: document.url,
+        withCredentials: false,
+        disableAutoFetch: false,
+        disableStream: false
+      });
       const pdf = await loadingTask.promise;
+      setPdfDoc(pdf);
       setTotalPages(pdf.numPages);
       setCurrentPage(1);
+      renderPage(1, pdf);
     } catch (error) {
       console.error('Error loading PDF:', error);
       setError('Failed to load PDF for preview');
@@ -74,17 +82,47 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
     }
   };
 
+  // Render PDF page
+  const renderPage = async (pageNum, pdf = pdfDoc) => {
+    if (!pdf || !pdfCanvasRef.current) return;
+    
+    try {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = pdfCanvasRef.current;
+      const context = canvas.getContext('2d');
+      
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport
+      };
+      
+      await page.render(renderContext).promise;
+    } catch (error) {
+      console.error('Error rendering page:', error);
+    }
+  };
+
   // Handle page navigation
   const goToPage = (pageNum) => {
     if (pageNum >= 1 && pageNum <= totalPages) {
       setCurrentPage(pageNum);
+      renderPage(pageNum);
     }
   };
 
   // Handle clicking on the PDF to place signature
-  const handlePdfClick = ({ x, y, page }) => {
+  const handlePdfClick = (e) => {
+    const canvas = pdfCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
     const newPlacement = {
-      page: page,
+      page: currentPage,
       x: x,
       y: y,
       id: Date.now()
@@ -514,13 +552,44 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
                   <Loader className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
               ) : (
-                <div className="max-w-4xl mx-auto">
-                  <PdfViewer
-                    pdfUrl={document.url}
-                    pageNumber={currentPage}
-                    onPageClick={handlePdfClick}
-                    signaturePlacements={signaturePlacements}
-                  />
+                <div className="max-w-4xl mx-auto relative">
+                  <div className="relative bg-white shadow-lg">
+                    <canvas
+                      ref={pdfCanvasRef}
+                      className="w-full cursor-crosshair"
+                      onClick={handlePdfClick}
+                    />
+                    
+                    {/* Show placed signatures */}
+                    {signaturePlacements
+                      .filter(p => p.page === currentPage)
+                      .map((placement) => (
+                        <div
+                          key={placement.id}
+                          className="absolute bg-blue-500 bg-opacity-20 border-2 border-blue-500"
+                          style={{
+                            left: `${placement.x}%`,
+                            top: `${placement.y}%`,
+                            width: '150px',
+                            height: '50px',
+                            transform: 'translate(-50%, -50%)'
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePlacement(placement.id);
+                            }}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <div className="text-xs text-blue-700 text-center mt-3">
+                            Signature #{signaturePlacements.findIndex(p => p.id === placement.id) + 1}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
             </div>
