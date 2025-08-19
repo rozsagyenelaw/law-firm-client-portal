@@ -1,420 +1,719 @@
-import React, { useState } from 'react';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { db, storage } from '../firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useRef, useEffect } from 'react';
+import { FileText, PenTool, Check, Download, AlertCircle, Lock, Calendar, User, Hash, X, Loader, ChevronLeft, ChevronRight, MousePointer, Trash2 } from 'lucide-react';
+import { doc, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { PenTool, MousePointer, X } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import app, { db, storage, auth } from '../firebase';
 
 const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [step, setStep] = useState(1); // Step 1: Type name, Step 2: Place signature
-  const [isSigning, setIsSigning] = useState(false);
-  const [typedName, setTypedName] = useState('');
+  const [signature, setSignature] = useState('');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [showSigningModal, setShowSigningModal] = useState(false);
+  const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [signaturePosition, setSignaturePosition] = useState(null);
+  const [ipAddress, setIpAddress] = useState('');
+  const [isSigning, setIsSigning] = useState(false);
+  const [error, setError] = useState('');
+  const canvasRef = useRef(null);
+  
+  // PDF preview states
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [signaturePlacements, setSignaturePlacements] = useState([]);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+  
+  // Get user's IP for audit trail
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then(response => response.json())
+      .then(data => setIpAddress(data.ip))
+      .catch(() => setIpAddress('Unknown'));
+  }, []);
 
+  // Initialize canvas when modal opens
+  useEffect(() => {
+    if (showSigningModal && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Set up drawing context
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+  }, [showSigningModal]);
+
+  // Handle clicking on the PDF overlay to place signature
   const handlePdfClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100; // Percentage
-    const y = ((e.clientY - rect.top) / rect.height) * 100; // Percentage
+    if (!signature) {
+      setError('Please draw your signature first');
+      return;
+    }
     
-    setSignaturePosition({ x, y, page: currentPage });
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100; // Store as percentage
+    const y = ((e.clientY - rect.top) / rect.height) * 100; // Store as percentage
+    
+    const newPlacement = {
+      page: currentPage,
+      x: x,
+      y: y,
+      id: Date.now(),
+      signatureImage: signature // Store the signature image with the placement
+    };
+    
+    setSignaturePlacements([...signaturePlacements, newPlacement]);
+    setError(''); // Clear any errors
   };
 
+  // Remove a signature placement
+  const removePlacement = (id) => {
+    setSignaturePlacements(signaturePlacements.filter(p => p.id !== id));
+  };
+  
+  // Canvas drawing functions
+  const startDrawing = (e) => {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    
+    const x = e.type.includes('mouse') ? e.clientX - rect.left : e.touches[0].clientX - rect.left;
+    const y = e.type.includes('mouse') ? e.clientY - rect.top : e.touches[0].clientY - rect.top;
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  
+  const draw = (e) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    
+    const x = e.type.includes('mouse') ? e.clientX - rect.left : e.touches[0].clientX - rect.left;
+    const y = e.type.includes('mouse') ? e.clientY - rect.top : e.touches[0].clientY - rect.top;
+    
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+  
+  const stopDrawing = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      saveSignature();
+    }
+  };
+  
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setSignature('');
+  };
+  
+  const saveSignature = () => {
+    const canvas = canvasRef.current;
+    const signatureData = canvas.toDataURL('image/png');
+    setSignature(signatureData);
+  };
+
+  // Continue to placement after drawing signature
   const proceedToPlacement = () => {
-    if (!typedName.trim()) {
-      alert('Please type your full legal name');
+    if (!signature) {
+      setError('Please draw your signature first');
       return;
     }
-    if (!agreedToTerms) {
-      alert('Please agree to the terms');
-      return;
-    }
-    setStep(2);
+    
+    setShowSigningModal(false);
+    setShowPlacementModal(true);
+    setError('');
   };
-
+  
+  // Generate document hash for integrity
+  const generateDocumentHash = async (docContent) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(docContent);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  };
+  
+  // Create audit trail entry
+  const createAuditTrail = async (action, details) => {
+    await addDoc(collection(db, 'auditTrails'), {
+      documentId: document.id,
+      userId: user.uid,
+      userName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+      action: action,
+      details: details,
+      timestamp: serverTimestamp(),
+      ipAddress: ipAddress,
+      userAgent: navigator.userAgent,
+      documentHash: await generateDocumentHash(document.content || document.name)
+    });
+  };
+  
   const handleSign = async () => {
-    if (!signaturePosition) {
-      alert('Please click on the document where you want to place your signature');
+    if (!signature || !agreedToTerms) {
+      setError('Please provide your signature and agree to the terms');
       return;
     }
-
+    
+    if (signaturePlacements.length === 0) {
+      setError('Please click on the document where you want to place your signature');
+      return;
+    }
+    
     setIsSigning(true);
-
+    setError('');
+    
     try {
-      // Fetch or create PDF
-      let pdfBytes;
-      if (document.url) {
-        const response = await fetch(document.url);
-        pdfBytes = await response.arrayBuffer();
-      } else {
-        const pdfDoc = await PDFDocument.create();
-        const page = pdfDoc.addPage([612, 792]);
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        page.drawText(document.name || 'Document', {
-          x: 50,
-          y: 700,
-          size: 20,
-          font: font,
-        });
-        pdfBytes = await pdfDoc.save();
-      }
-
-      // Load the PDF
-      const pdfDoc = await PDFDocument.load(pdfBytes);
+      // First, upload the signature image
+      const signatureBlob = await fetch(signature).then(r => r.blob());
+      const signatureFileName = `signatures/${user.uid}/${document.id}_signature_${Date.now()}.png`;
+      const signatureRef = ref(storage, signatureFileName);
       
-      // Get the specific page
-      const pages = pdfDoc.getPages();
-      const pageIndex = signaturePosition.page - 1;
+      const uploadResult = await uploadBytes(signatureRef, signatureBlob);
+      const signatureUrl = await getDownloadURL(uploadResult.ref);
       
-      if (pageIndex >= 0 && pageIndex < pages.length) {
-        const page = pages[pageIndex];
-        const { width, height } = page.getSize();
+      let signedPdfUrl = document.url; // Default to original URL
+      
+      // Try to call Firebase Function to embed signature in PDF
+      try {
+        const functions = getFunctions(app);
+        const embedSignature = httpsCallable(functions, 'embedSignatureInPDFv2');
         
-        // Convert percentage position to actual coordinates
-        const actualX = (signaturePosition.x / 100) * width;
-        const actualY = height - ((signaturePosition.y / 100) * height); // PDF Y is from bottom
-        
-        // Embed fonts
-        const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        
-        // Draw signature line
-        page.drawLine({
-          start: { x: actualX - 50, y: actualY },
-          end: { x: actualX + 100, y: actualY },
-          thickness: 1,
-          color: rgb(0, 0, 0),
-        });
-        
-        // Draw the typed name as signature
-        page.drawText(typedName, {
-          x: actualX - 40,
-          y: actualY + 10,
-          size: 20,
-          font: helveticaBoldFont,
-          color: rgb(0, 0, 0.8),
-        });
-        
-        // Add signature details below
-        page.drawText('Electronically Signed by:', {
-          x: actualX - 40,
-          y: actualY - 15,
-          size: 8,
-          font: helveticaFont,
-          color: rgb(0, 0, 0),
-        });
-        
-        page.drawText(typedName, {
-          x: actualX - 40,
-          y: actualY - 25,
-          size: 10,
-          font: helveticaBoldFont,
-          color: rgb(0, 0, 0),
-        });
-        
-        const email = user?.email || 'Not provided';
-        page.drawText(`Email: ${email}`, {
-          x: actualX - 40,
-          y: actualY - 35,
-          size: 8,
-          font: helveticaFont,
-          color: rgb(0, 0, 0),
-        });
-        
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-US');
-        page.drawText(`Date: ${dateStr}`, {
-          x: actualX - 40,
-          y: actualY - 45,
-          size: 8,
-          font: helveticaFont,
-          color: rgb(0, 0, 0),
-        });
-        
-        // Get IP
-        let ipAddress = 'Not recorded';
-        try {
-          const ipResponse = await fetch('https://api.ipify.org?format=json');
-          const ipData = await ipResponse.json();
-          ipAddress = ipData.ip;
-        } catch (e) {
-          console.log('Could not get IP');
+        // Ensure user is authenticated
+        if (!auth.currentUser) {
+          console.error('No authenticated user');
+          throw new Error('User not authenticated');
         }
         
-        page.drawText(`IP: ${ipAddress}`, {
-          x: actualX - 40,
-          y: actualY - 55,
-          size: 8,
-          font: helveticaFont,
-          color: rgb(0, 0, 0),
+        // Force token refresh to ensure authentication
+        await auth.currentUser.getIdToken(true);
+        console.log('Calling Firebase function with authenticated user:', auth.currentUser.uid);
+        
+        const result = await embedSignature({
+          documentId: document.id,
+          pdfUrl: document.url,
+          signatureUrl: signatureUrl,
+          placements: signaturePlacements.map(p => ({
+            page: p.page,
+            x: p.x,
+            y: p.y
+          })),
+          signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+          ipAddress: ipAddress
         });
+        
+        if (result.data.success) {
+          signedPdfUrl = result.data.signedPdfUrl;
+          console.log('Signed PDF created:', signedPdfUrl);
+        }
+      } catch (functionError) {
+        console.log('Firebase function error:', functionError);
+        // Continue without PDF embedding - signature is still saved
       }
       
-      // Set PDF metadata
-      const now = new Date();
-      pdfDoc.setTitle(`${document.name} - Electronically Signed`);
-      pdfDoc.setAuthor(typedName);
-      pdfDoc.setSubject('Electronically Signed Legal Document');
-      pdfDoc.setProducer('Law Firm Client Portal');
-      pdfDoc.setModificationDate(now);
-      
-      // Save the PDF
-      const signedPdfBytes = await pdfDoc.save();
-      const pdfBlob = new Blob([signedPdfBytes], { type: 'application/pdf' });
-      
-      // Generate filename
-      const timestamp = Date.now();
-      const fileName = `signed_${document.id}_${timestamp}.pdf`;
-      
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, `signed-documents/${fileName}`);
-      await uploadBytes(storageRef, pdfBlob, {
-        contentType: 'application/pdf',
-        customMetadata: {
-          signerName: typedName,
-          signerEmail: user?.email || '',
-          signedAt: now.toISOString(),
-          documentId: document.id
-        }
-      });
-      
-      const downloadUrl = await getDownloadURL(storageRef);
-      
-      // Save to Firestore
-      await addDoc(collection(db, 'signatures'), {
+      // Create signature record
+      const signatureData = {
         documentId: document.id,
         documentName: document.name,
-        signedPdfUrl: downloadUrl,
-        signerName: typedName,
-        signerEmail: user?.email || '',
+        signerId: user.uid,
+        signerName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email,
+        signerEmail: user.email,
+        signatureImage: signatureUrl,
+        signaturePlacements: signaturePlacements.map(p => ({
+          page: p.page,
+          x: p.x,
+          y: p.y
+        })),
         signedAt: serverTimestamp(),
-        signaturePosition: signaturePosition,
-        userId: user?.uid,
-        courtReady: true
+        ipAddress: ipAddress,
+        userAgent: navigator.userAgent,
+        documentHash: await generateDocumentHash(document.content || document.name),
+        certificationStatement: `I, ${userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}, certify that I have read and agree to the terms of this document.`,
+        esignConsent: true,
+        agreedToTerms: true,
+        originalDocumentUrl: document.url,
+        signedDocumentUrl: signedPdfUrl
+      };
+      
+      // Save signature record
+      const signatureRef2 = await addDoc(collection(db, 'signatures'), signatureData);
+      
+      // Update document
+      await updateDoc(doc(db, 'documents', document.id), {
+        signed: true,
+        signatureId: signatureRef2.id,
+        signedAt: serverTimestamp(),
+        signedDocumentUrl: signedPdfUrl,
+        originalDocumentUrl: document.url
       });
       
-      // Download the signed PDF
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(pdfBlob);
-      link.download = `${document.name}_signed.pdf`;
-      link.click();
+      // Create audit trail
+      await createAuditTrail('DOCUMENT_SIGNED', {
+        signatureId: signatureRef2.id,
+        method: 'electronic_signature',
+        placementMethod: 'click_to_place',
+        signaturePlacements: signaturePlacements
+      });
       
-      alert('✅ Document signed successfully! The signed PDF has been downloaded.');
+      // Generate certificate
+      await generateCertificate(signatureRef2.id, signatureData);
       
-      // Callback and close
+      // Call callback
       if (onSigned) {
         onSigned({
           documentId: document.id,
+          signatureId: signatureRef2.id,
           signedAt: new Date(),
-          signedDocumentUrl: downloadUrl
+          signedDocumentUrl: signedPdfUrl
         });
       }
       
-      setIsModalOpen(false);
-      setStep(1);
-      setSignaturePosition(null);
+      setShowPlacementModal(false);
+      
+      if (signedPdfUrl && signedPdfUrl !== document.url) {
+        alert('Document signed successfully! The signed PDF with embedded signature is ready for court filing.');
+      } else {
+        alert('Document signed successfully! The signature has been saved.');
+      }
+      
       if (onClose) onClose();
       
     } catch (error) {
-      console.error('Error signing:', error);
-      alert('Error signing document. Please try again.');
+      console.error('Error signing document:', error);
+      setError('Error signing document. Please try again.');
     } finally {
       setIsSigning(false);
     }
   };
-
+  
+  const generateCertificate = async (signatureId, signatureData) => {
+    const certificate = {
+      certificateId: `CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      documentId: document.id,
+      documentName: document.name,
+      signatureId: signatureId,
+      signerInfo: {
+        name: signatureData.signerName,
+        email: signatureData.signerEmail,
+        ipAddress: signatureData.ipAddress
+      },
+      signedAt: new Date().toISOString(),
+      verificationCode: await generateDocumentHash(signatureId + Date.now()),
+      legalNotice: 'This certificate confirms that the above-named individual has electronically signed the referenced document in accordance with the ESIGN Act and UETA.',
+      courtCompliance: 'This electronic signature is legally binding and admissible in court proceedings.'
+    };
+    
+    await addDoc(collection(db, 'certificates'), certificate);
+  };
+  
   return (
     <>
-      {/* Sign Button */}
-      <button
-        onClick={() => setIsModalOpen(true)}
-        className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-lg transition-colors"
-        title="Sign Document"
-      >
-        <PenTool className="h-5 w-5" />
-      </button>
-
-      {/* Signing Modal */}
-      {isModalOpen && (
+      {/* Sign Document Button */}
+      {!showSigningModal && !showPlacementModal && (
+        <button
+          onClick={() => setShowSigningModal(true)}
+          className="text-blue-600 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-lg transition-colors"
+          title="Sign Document"
+        >
+          <PenTool className="h-5 w-5" />
+        </button>
+      )}
+      
+      {/* Step 1: Signature Drawing Modal */}
+      {showSigningModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Step 1: Draw Your Signature</h3>
+              <button
+                onClick={() => {
+                  setShowSigningModal(false);
+                  if (onClose) onClose();
+                }}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
             
-            {/* Step 1: Enter Name */}
-            {step === 1 && (
-              <div className="p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Step 1: Enter Your Signature
-                </h3>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type your full legal name
-                  </label>
-                  <input
-                    type="text"
-                    value={typedName}
-                    onChange={(e) => setTypedName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="John Smith"
-                  />
-                  <p className="mt-1 text-sm text-gray-500">
-                    This will appear as your signature on the document
-                  </p>
-                </div>
-                
-                <div className="mb-6">
-                  <label className="flex items-start">
-                    <input
-                      type="checkbox"
-                      checked={agreedToTerms}
-                      onChange={(e) => setAgreedToTerms(e.target.checked)}
-                      className="mt-1 mr-2"
-                    />
-                    <span className="text-sm text-gray-700">
-                      I agree that my typed name is the legal equivalent of my handwritten 
-                      signature and this document is legally binding.
-                    </span>
-                  </label>
-                </div>
-                
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={proceedToPlacement}
-                    disabled={!typedName.trim() || !agreedToTerms}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    Next: Choose Location
-                  </button>
-                </div>
+            {error && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+                <span className="text-red-700">{error}</span>
               </div>
             )}
+            
+            {/* Legal Notice */}
+            <div className="bg-blue-50 border border-blue-200 rounded p-4 mb-6">
+              <div className="flex items-start">
+                <Lock className="h-5 w-5 text-blue-600 mr-2 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 mb-1">Legal Electronic Signature</p>
+                  <p className="text-blue-700">
+                    This electronic signature will be legally binding and court-admissible under the ESIGN Act and UETA.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Document Info */}
+            <div className="bg-gray-50 rounded p-4 mb-6">
+              <h4 className="font-medium mb-2">Document Information</h4>
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-2 text-gray-500" />
+                  <span>{document.name}</span>
+                </div>
+                <div className="flex items-center">
+                  <User className="h-4 w-4 mr-2 text-gray-500" />
+                  <span>{userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : user.email}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Signature Pad */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Draw your signature below
+              </label>
+              <div className="border-2 border-gray-300 rounded bg-white">
+                <canvas
+                  ref={canvasRef}
+                  width={600}
+                  height={200}
+                  className="w-full cursor-crosshair"
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousedown', {
+                      clientX: touch.clientX,
+                      clientY: touch.clientY
+                    });
+                    canvasRef.current.dispatchEvent(mouseEvent);
+                  }}
+                  onTouchMove={(e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousemove', {
+                      clientX: touch.clientX,
+                      clientY: touch.clientY
+                    });
+                    canvasRef.current.dispatchEvent(mouseEvent);
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    const mouseEvent = new MouseEvent('mouseup', {});
+                    canvasRef.current.dispatchEvent(mouseEvent);
+                  }}
+                  style={{ touchAction: 'none' }}
+                />
+              </div>
+              <button
+                onClick={clearSignature}
+                className="mt-2 px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Clear
+              </button>
+              {signature && (
+                <div className="mt-2 text-sm text-green-600 flex items-center">
+                  <Check className="h-4 w-4 mr-1" />
+                  Signature captured
+                </div>
+              )}
+            </div>
+            
+            {/* Terms Agreement */}
+            <div className="mb-6">
+              <label className="flex items-start">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-1 mr-2"
+                />
+                <span className="text-sm text-gray-700">
+                  I agree that my electronic signature is the legal equivalent of my manual signature on this document.
+                </span>
+              </label>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowSigningModal(false);
+                  if (onClose) onClose();
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={proceedToPlacement}
+                disabled={!signature || !agreedToTerms}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next: Place Signature
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Step 2: Click to Place Signature */}
-            {step === 2 && (
-              <>
-                <div className="p-6 border-b">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      Step 2: Click Where to Place Your Signature
-                    </h3>
-                    <button
-                      onClick={() => {
-                        setIsModalOpen(false);
-                        setStep(1);
-                        setSignaturePosition(null);
-                      }}
-                      className="text-gray-400 hover:text-gray-500"
-                    >
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
-                  
-                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-center">
-                    <MousePointer className="h-5 w-5 text-blue-600 mr-2" />
-                    <span className="text-sm text-blue-900">
-                      Click on the document below where you want your signature to appear
-                    </span>
+      {/* Step 2: Signature Placement Modal */}
+      {showPlacementModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium text-gray-900">Step 2: Click Where to Place Your Signature</h3>
+                <button
+                  onClick={() => {
+                    setShowPlacementModal(false);
+                    setSignaturePlacements([]);
+                    if (onClose) onClose();
+                  }}
+                  className="text-gray-400 hover:text-gray-500"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center">
+                  <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+                  <span className="text-red-700">{error}</span>
+                </div>
+              )}
+
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <div className="flex items-start">
+                  <MousePointer className="h-5 w-5 text-yellow-600 mr-2 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-yellow-900 mb-1">Instructions</p>
+                    <p className="text-yellow-700">
+                      The PDF will open below. Click directly on the PDF where you want to place your signature.
+                      You can place multiple signatures if needed. Use the page navigation to move between pages.
+                    </p>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                <div className="p-6 bg-gray-100" style={{ height: '500px', overflow: 'auto' }}>
-                  {/* PDF Preview */}
-                  <div className="bg-white shadow-lg mx-auto" style={{ maxWidth: '800px' }}>
-                    {document.url ? (
-                      <div className="relative">
-                        <iframe
-                          src={document.url}
-                          className="w-full"
-                          style={{ height: '600px', border: 'none' }}
-                          title="PDF Document"
-                        />
+            {/* PDF Preview Area */}
+            <div className="flex-1 overflow-auto p-6 bg-gray-100">
+              <div className="max-w-4xl mx-auto">
+                {/* PDF Container */}
+                <div className="relative bg-white shadow-lg">
+                  {/* Use iframe with full PDF */}
+                  {document.url && (
+                    <div className="relative">
+                      {/* PDF Viewer - shows ALL pages */}
+                      <iframe
+                        src={document.url}
+                        className="w-full"
+                        style={{ height: '850px', border: 'none' }}
+                        title="PDF Document"
+                      />
+                      
+                      {/* Transparent overlay for click detection */}
+                      <div 
+                        className="absolute inset-0"
+                        onClick={handlePdfClick}
+                        style={{ 
+                          cursor: 'crosshair',
+                          backgroundColor: 'rgba(255, 255, 255, 0.01)', // Nearly transparent
+                          zIndex: 10
+                        }}
+                      >
+                        {/* Instructions when no signatures placed */}
+                        {signaturePlacements.filter(p => p.page === currentPage).length === 0 && (
+                          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-100 border border-blue-300 rounded-lg px-4 py-2 pointer-events-none">
+                            <p className="text-sm text-blue-900 font-medium">
+                              Click anywhere on the document to place your signature
+                            </p>
+                          </div>
+                        )}
                         
-                        {/* Clickable overlay */}
-                        <div 
-                          className="absolute inset-0 cursor-crosshair"
-                          onClick={handlePdfClick}
-                          style={{ backgroundColor: 'rgba(0,0,0,0.01)' }}
-                        >
-                          {signaturePosition && (
+                        {/* Show placed signatures */}
+                        {signaturePlacements
+                          .filter(p => p.page === currentPage)
+                          .map((placement) => (
                             <div
-                              className="absolute border-2 border-green-500 bg-green-50 bg-opacity-50 pointer-events-none"
+                              key={placement.id}
+                              className="absolute"
                               style={{
-                                left: `${signaturePosition.x}%`,
-                                top: `${signaturePosition.y}%`,
+                                left: `${placement.x}%`,
+                                top: `${placement.y}%`,
+                                width: '180px',
+                                height: '60px',
                                 transform: 'translate(-50%, -50%)',
-                                padding: '10px 20px'
+                                zIndex: 20,
+                                pointerEvents: 'none'
                               }}
                             >
-                              <span className="text-green-700 font-medium">
-                                {typedName}
-                              </span>
+                              <div className="relative w-full h-full">
+                                <img 
+                                  src={placement.signatureImage} 
+                                  alt="Signature" 
+                                  className="w-full h-full object-contain"
+                                  style={{ 
+                                    filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.4))',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                    padding: '4px',
+                                    borderRadius: '2px'
+                                  }}
+                                />
+                                
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePlacement(placement.id);
+                                  }}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow-lg"
+                                  style={{ zIndex: 30, pointerEvents: 'auto' }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+                          ))}
                       </div>
-                    ) : (
-                      <div className="p-12 text-center text-gray-500">
-                        <p>Preview not available</p>
-                        <p className="text-sm mt-2">Click anywhere to place signature</p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Page navigation */}
-                  <div className="mt-4 flex justify-center items-center space-x-4">
-                    <button
-                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                      className="px-3 py-1 border rounded hover:bg-gray-50"
-                    >
-                      Previous Page
-                    </button>
-                    <span className="text-sm text-gray-600">
-                      Page {currentPage} - Scroll in PDF to see all pages
-                    </span>
-                    <button
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      className="px-3 py-1 border rounded hover:bg-gray-50"
-                    >
-                      Next Page
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-6 border-t bg-white">
-                  {signaturePosition && (
-                    <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
-                      <p className="text-sm text-green-800">
-                        ✓ Signature position selected on page {signaturePosition.page}
-                      </p>
                     </div>
                   )}
                   
-                  <div className="flex justify-between">
-                    <button
-                      onClick={() => setStep(1)}
-                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  {/* Fallback if PDF doesn't load */}
+                  {!document.url && (
+                    <div className="p-12 text-center">
+                      <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">No PDF URL available</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* PDF Navigation Help */}
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      <strong>Tip:</strong> Scroll down in the PDF viewer to see all pages. 
+                      The PDF shows all pages - scroll to find signature lines.
+                    </div>
+                    <a 
+                      href={document.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-700 flex items-center"
                     >
-                      Back
-                    </button>
-                    <button
-                      onClick={handleSign}
-                      disabled={!signaturePosition || isSigning}
-                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {isSigning ? 'Signing...' : 'Complete Signing'}
-                    </button>
+                      <FileText className="h-4 w-4 mr-1" />
+                      Open full PDF
+                    </a>
                   </div>
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="p-6 border-t bg-white">
+              {/* Page Navigation */}
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous Page
+                </button>
+                
+                <div className="text-sm text-gray-600">
+                  Page {currentPage}
+                  <span className="mx-2">|</span>
+                  <button
+                    onClick={() => {
+                      const pageNum = prompt('Enter page number:');
+                      if (pageNum && !isNaN(pageNum)) {
+                        setCurrentPage(parseInt(pageNum));
+                      }
+                    }}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    Go to page
+                  </button>
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  className="flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Next Page
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </button>
+              </div>
+
+              {/* Signature Placements Summary */}
+              {signaturePlacements.length > 0 && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-green-800">
+                      <strong>{signaturePlacements.length} signature(s) placed</strong>
+                    </p>
+                    <button
+                      onClick={() => setSignaturePlacements([])}
+                      className="text-sm text-red-600 hover:text-red-700 flex items-center"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="mt-2 text-xs text-green-700">
+                    Pages with signatures: {[...new Set(signaturePlacements.map(p => p.page))].join(', ')}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-between">
+                <button
+                  onClick={() => {
+                    setShowPlacementModal(false);
+                    setShowSigningModal(true);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Back to Signature
+                </button>
+                
+                <button
+                  onClick={handleSign}
+                  disabled={signaturePlacements.length === 0 || isSigning}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isSigning ? (
+                    <>
+                      <Loader className="h-4 w-4 mr-2 animate-spin" />
+                      Signing...
+                    </>
+                  ) : (
+                    'Complete Signing'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
