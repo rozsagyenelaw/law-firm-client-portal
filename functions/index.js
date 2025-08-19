@@ -6,25 +6,43 @@ const crypto = require('crypto');
 
 admin.initializeApp();
 
-exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
-  // Verify authentication - THIS LINE IS NOW ACTIVE (NOT COMMENTED)
+exports.embedSignatureInPDFv2 = functions.https.onCall(async (data, context) => {
+  // Add logging to debug
+  console.log('Function called with context.auth:', !!context.auth);
+  
+  // Verify authentication
   if (!context.auth) {
+    console.error('Authentication failed - no context.auth');
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
+  console.log('User authenticated:', context.auth.uid);
   const { documentId, pdfUrl, signatureUrl, placements, signerName, ipAddress } = data;
 
   try {
     console.log('Starting PDF signature embedding for document:', documentId);
+    console.log('PDF URL:', pdfUrl);
+    console.log('Signature URL:', signatureUrl);
     
     // Download the original PDF
+    console.log('Downloading PDF...');
     const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+    }
     const pdfBuffer = await pdfResponse.arrayBuffer();
+    console.log('PDF downloaded, size:', pdfBuffer.byteLength);
     
     // Download the signature image
+    console.log('Downloading signature...');
     const signatureResponse = await fetch(signatureUrl);
+    if (!signatureResponse.ok) {
+      throw new Error(`Failed to download signature: ${signatureResponse.status} ${signatureResponse.statusText}`);
+    }
     const signatureBuffer = await signatureResponse.arrayBuffer();
+    console.log('Signature downloaded, size:', signatureBuffer.byteLength);
     
+    // Rest of your existing code continues here...
     // Load the PDF
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     
@@ -137,6 +155,7 @@ exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
     }
     
     // Save the PDF with embedded signatures
+    console.log('Saving PDF with signatures...');
     const signedPdfBytes = await pdfDoc.save();
     
     // Upload the signed PDF to Firebase Storage
@@ -144,6 +163,7 @@ exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
     const signedFileName = `signed-documents/${documentId}_signed_${Date.now()}.pdf`;
     const file = bucket.file(signedFileName);
     
+    console.log('Uploading to Firebase Storage...');
     await file.save(Buffer.from(signedPdfBytes), {
       metadata: {
         contentType: 'application/pdf',
@@ -151,7 +171,7 @@ exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
           originalDocument: documentId,
           signerName: signerName,
           signerUID: context.auth.uid,
-          signerEmail: context.auth.token.email || 'Not provided',
+          signerEmail: context.auth.token?.email || 'Not provided',
           signedAt: new Date().toISOString(),
           ipAddress: ipAddress,
           signatureCount: placements.length.toString(),
@@ -178,7 +198,8 @@ exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
     };
     
   } catch (error) {
-    console.error('Error embedding signature:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to embed signature in PDF: ' + error.message);
+    console.error('Detailed error in embedSignatureInPDFv2:', error);
+    console.error('Error stack:', error.stack);
+    throw new functions.https.HttpsError('internal', `Failed to embed signature in PDF: ${error.message}`);
   }
 });
