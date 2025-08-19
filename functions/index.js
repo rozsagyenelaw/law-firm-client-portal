@@ -6,10 +6,10 @@ const fetch = require('node-fetch');
 admin.initializeApp();
 
 exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
-  // Remove the authentication check for now to test
-  // if (!context.auth) {
-  //   throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  // }
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
 
   const { documentId, pdfUrl, signatureUrl, placements, signerName, ipAddress } = data;
 
