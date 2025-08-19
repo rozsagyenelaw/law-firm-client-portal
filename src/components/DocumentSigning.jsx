@@ -188,7 +188,7 @@ const DocumentSigning = ({ document, user, userProfile, onClose, onSigned }) => 
       // Try to call Firebase Function to embed signature in PDF
       try {
         const functions = getFunctions(app);
-        const embedSignature = httpsCallable(functions, 'embedSignatureInPDFv2');
+        const embedSignature = httpsCallable(functions, 'embedSignatureInPDF');
         
         // Ensure user is authenticated
         if (!auth.currentUser) {
