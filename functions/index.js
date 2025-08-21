@@ -1,119 +1,306 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { PDFDocument, rgb } = require('pdf-lib');
-const fetch = require('node-fetch');
+const hellosign = require('hellosign-sdk')({ key: functions.config().hellosign.apikey });
 
-admin.initializeApp();
+// Initialize admin if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
-exports.embedSignatureInPDF = functions.https.onCall(async (data, context) => {
-  // Verify authentication
+const db = admin.firestore();
+
+// Create a signature request for uploaded PDF
+exports.createSignatureRequest = functions.https.onCall(async (data, context) => {
+  // Check authentication
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { documentId, pdfUrl, signatureUrl, placements, signerName, ipAddress } = data;
+  const { 
+    title, 
+    subject, 
+    message, 
+    signerEmail, 
+    signerName, 
+    fileUrl,
+    useEmail = false 
+  } = data;
 
   try {
-    console.log('Starting PDF signature embedding for document:', documentId);
-    
-    // Download the original PDF
-    const pdfResponse = await fetch(pdfUrl);
-    const pdfBuffer = await pdfResponse.arrayBuffer();
-    
-    // Download the signature image
-    const signatureResponse = await fetch(signatureUrl);
-    const signatureBuffer = await signatureResponse.arrayBuffer();
-    
-    // Load the PDF
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    
-    // Embed the signature image
-    const signatureImage = await pdfDoc.embedPng(signatureBuffer);
-    const signatureDims = signatureImage.scale(0.5);
-    
-    // Get pages
-    const pages = pdfDoc.getPages();
-    
-    // Place signatures on each specified location
-    for (const placement of placements) {
-      const pageIndex = placement.page - 1;
-      if (pageIndex >= 0 && pageIndex < pages.length) {
-        const page = pages[pageIndex];
-        const { width, height } = page.getSize();
-        
-        // Convert percentage coordinates to actual coordinates
-        const x = (placement.x / 100) * width - (signatureDims.width / 2);
-        const y = height - ((placement.y / 100) * height) - (signatureDims.height / 2);
-        
-        // Draw the signature
-        page.drawImage(signatureImage, {
-          x: x,
-          y: y,
-          width: signatureDims.width,
-          height: signatureDims.height,
-        });
-        
-        // Add timestamp and signer info below signature
-        page.drawText(`Signed by: ${signerName}`, {
-          x: x,
-          y: y - 15,
-          size: 8,
-          color: rgb(0, 0, 0),
-        });
-        
-        page.drawText(`Date: ${new Date().toLocaleString()}`, {
-          x: x,
-          y: y - 25,
-          size: 8,
-          color: rgb(0, 0, 0),
-        });
-        
-        page.drawText(`IP: ${ipAddress}`, {
-          x: x,
-          y: y - 35,
-          size: 8,
-          color: rgb(0, 0, 0),
-        });
-      }
-    }
-    
-    // Save the PDF with embedded signatures
-    const signedPdfBytes = await pdfDoc.save();
-    
-    // Upload the signed PDF to Firebase Storage
-    const bucket = admin.storage().bucket();
-    const signedFileName = `signed-documents/${documentId}_signed_${Date.now()}.pdf`;
-    const file = bucket.file(signedFileName);
-    
-    await file.save(Buffer.from(signedPdfBytes), {
-      metadata: {
-        contentType: 'application/pdf',
-        metadata: {
-          originalDocument: documentId,
-          signerName: signerName,
-          signedAt: new Date().toISOString(),
-          ipAddress: ipAddress,
-          signatureCount: placements.length.toString()
+    console.log('Creating signature request for:', signerEmail);
+
+    const opts = {
+      test_mode: 1, // Set to 0 for production
+      title: title,
+      subject: subject,
+      message: message,
+      signers: [
+        {
+          email_address: signerEmail,
+          name: signerName
         }
-      }
+      ],
+      file_url: [fileUrl]
+    };
+
+    // Add client ID for embedded signing
+    if (!useEmail) {
+      opts.client_id = functions.config().hellosign.clientid;
+    }
+
+    const result = await hellosign.signatureRequest.send(opts);
+
+    // Save request info to Firestore
+    await db.collection('signatureRequests').doc(result.signature_request.signature_request_id).set({
+      requestId: result.signature_request.signature_request_id,
+      title: title,
+      signerEmail: signerEmail,
+      signerName: signerName,
+      status: 'sent',
+      createdBy: context.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      useEmail: useEmail,
+      signatures: result.signature_request.signatures
     });
+
+    // If embedded signing, get the sign URL
+    if (!useEmail && result.signature_request.signatures && result.signature_request.signatures[0]) {
+      const signatureId = result.signature_request.signatures[0].signature_id;
+      const embeddedResult = await hellosign.embedded.getSignUrl(signatureId);
+      
+      return {
+        success: true,
+        requestId: result.signature_request.signature_request_id,
+        signUrl: embeddedResult.embedded.sign_url,
+        expiresAt: embeddedResult.embedded.expires_at
+      };
+    }
+
+    return {
+      success: true,
+      requestId: result.signature_request.signature_request_id,
+      message: 'Signature request sent via email'
+    };
+
+  } catch (error) {
+    console.error('Error creating signature request:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// Create signature request from template
+exports.createTemplateRequest = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { 
+    templateId, 
+    signerEmail, 
+    signerName,
+    customFields = {},
+    useEmail = false
+  } = data;
+
+  try {
+    console.log('Creating template signature request for:', signerEmail);
+
+    const opts = {
+      test_mode: 1, // Set to 0 for production
+      template_id: templateId,
+      subject: 'Document for Signature',
+      message: 'Please sign this document.',
+      signers: [
+        {
+          email_address: signerEmail,
+          name: signerName,
+          role: 'Client' // Adjust based on your template
+        }
+      ]
+    };
+
+    // Add custom fields if provided
+    if (Object.keys(customFields).length > 0) {
+      opts.custom_fields = Object.entries(customFields).map(([key, value]) => ({
+        name: key,
+        value: value
+      }));
+    }
+
+    // Add client ID for embedded signing
+    if (!useEmail) {
+      opts.client_id = functions.config().hellosign.clientid;
+    }
+
+    const result = await hellosign.signatureRequest.sendWithTemplate(opts);
+
+    // Save to Firestore
+    await db.collection('signatureRequests').doc(result.signature_request.signature_request_id).set({
+      requestId: result.signature_request.signature_request_id,
+      templateId: templateId,
+      signerEmail: signerEmail,
+      signerName: signerName,
+      status: 'sent',
+      createdBy: context.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      useEmail: useEmail,
+      signatures: result.signature_request.signatures
+    });
+
+    // If embedded signing, get the sign URL
+    if (!useEmail && result.signature_request.signatures && result.signature_request.signatures[0]) {
+      const signatureId = result.signature_request.signatures[0].signature_id;
+      const embeddedResult = await hellosign.embedded.getSignUrl(signatureId);
+      
+      return {
+        success: true,
+        requestId: result.signature_request.signature_request_id,
+        signUrl: embeddedResult.embedded.sign_url,
+        expiresAt: embeddedResult.embedded.expires_at
+      };
+    }
+
+    return {
+      success: true,
+      requestId: result.signature_request.signature_request_id,
+      message: 'Template signature request sent'
+    };
+
+  } catch (error) {
+    console.error('Error creating template request:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// Get signature request status
+exports.getSignatureStatus = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { requestId } = data;
+
+  try {
+    // Get from HelloSign API
+    const result = await hellosign.signatureRequest.get(requestId);
     
-    // Make the file publicly accessible
-    await file.makePublic();
-    
-    // Get the public URL
-    const signedPdfUrl = `https://storage.googleapis.com/${bucket.name}/${signedFileName}`;
-    
-    console.log('PDF signature embedding completed:', signedPdfUrl);
+    // Update Firestore
+    await db.collection('signatureRequests').doc(requestId).update({
+      status: result.signature_request.is_complete ? 'completed' : 'pending',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return {
+      success: true,
+      status: result.signature_request.is_complete ? 'completed' : 'pending',
+      signatures: result.signature_request.signatures,
+      filesUrl: result.signature_request.files_url
+    };
+
+  } catch (error) {
+    console.error('Error getting signature status:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// Download signed document
+exports.downloadSignedDocument = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { requestId } = data;
+
+  try {
+    // Get download URL from HelloSign
+    const result = await hellosign.signatureRequest.download(requestId, { file_type: 'pdf' });
     
     return {
       success: true,
-      signedPdfUrl: signedPdfUrl,
-      message: 'Document signed successfully'
+      downloadUrl: result.file_url,
+      expiresAt: result.expires_at
     };
+
+  } catch (error) {
+    console.error('Error downloading document:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// List all templates
+exports.listTemplates = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  try {
+    const result = await hellosign.template.list();
+    
+    return {
+      success: true,
+      templates: result.templates.map(t => ({
+        id: t.template_id,
+        title: t.title,
+        message: t.message,
+        signerRoles: t.signer_roles
+      }))
+    };
+
+  } catch (error) {
+    console.error('Error listing templates:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// Webhook for signature events
+exports.helloSignWebhook = functions.https.onRequest(async (req, res) => {
+  try {
+    const event = req.body;
+    
+    // Verify the event came from HelloSign
+    if (!hellosign.utils.isValidSignature(
+      functions.config().hellosign.apikey,
+      req.headers['hellosign-signature'],
+      JSON.stringify(event)
+    )) {
+      console.error('Invalid signature on webhook');
+      return res.status(401).send('Unauthorized');
+    }
+
+    // Handle different event types
+    const eventType = event.event.event_type;
+    const signatureRequestId = event.signature_request.signature_request_id;
+
+    console.log(`Received ${eventType} event for request ${signatureRequestId}`);
+
+    switch (eventType) {
+      case 'signature_request_signed':
+        await db.collection('signatureRequests').doc(signatureRequestId).update({
+          status: 'signed',
+          signedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        break;
+        
+      case 'signature_request_all_signed':
+        await db.collection('signatureRequests').doc(signatureRequestId).update({
+          status: 'completed',
+          completedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        break;
+        
+      case 'signature_request_declined':
+        await db.collection('signatureRequests').doc(signatureRequestId).update({
+          status: 'declined',
+          declinedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        break;
+    }
+
+    // Return the expected response
+    res.status(200).send('Hello API Event Received');
     
   } catch (error) {
-    console.error('Error embedding signature:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to embed signature in PDF: ' + error.message);
+    console.error('Webhook error:', error);
+    res.status(500).send('Error processing webhook');
   }
 });
