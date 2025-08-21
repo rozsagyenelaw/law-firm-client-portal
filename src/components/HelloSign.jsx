@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, FileText, Send, Mail, CheckCircle, XCircle, Download, Loader } from 'lucide-react';
-import { functions, storage, db } from '../firebase';
-import { httpsCallable } from 'firebase/functions';
+import { auth, storage, db } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
@@ -21,6 +20,17 @@ const HelloSign = ({ user }) => {
     templateId: ''
   });
 
+  // Get auth token for API calls
+  const getAuthToken = async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      return token;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
+    }
+  };
+
   // Load templates on mount
   useEffect(() => {
     loadTemplates();
@@ -30,10 +40,27 @@ const HelloSign = ({ user }) => {
   // Load templates from HelloSign
   const loadTemplates = async () => {
     try {
-      const listTemplates = httpsCallable(functions, 'listTemplates');
-      const result = await listTemplates();
-      if (result.data.success) {
-        setTemplates(result.data.templates);
+      const token = await getAuthToken();
+      if (!token) {
+        console.error('No auth token available');
+        return;
+      }
+
+      const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/listTemplates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setTemplates(result.templates);
+        }
+      } else {
+        console.error('Failed to load templates:', response.status);
       }
     } catch (error) {
       console.error('Error loading templates:', error);
@@ -80,38 +107,59 @@ const HelloSign = ({ user }) => {
 
     setLoading(true);
     try {
+      // Get auth token
+      const token = await getAuthToken();
+      if (!token) {
+        alert('Please sign in to use this feature');
+        setLoading(false);
+        return;
+      }
+
       // Upload file to Firebase Storage
       const storageRef = ref(storage, `signature-docs/${Date.now()}_${selectedFile.name}`);
       const snapshot = await uploadBytes(storageRef, selectedFile);
       const fileUrl = await getDownloadURL(snapshot.ref);
 
       // Create signature request
-      const createSignatureRequest = httpsCallable(functions, 'createSignatureRequest');
-      const result = await createSignatureRequest({
-        ...formData,
-        fileUrl: fileUrl
+      const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/createSignatureRequest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...formData,
+          fileUrl: fileUrl
+        })
       });
 
-      if (result.data.success) {
-        if (result.data.signUrl) {
-          // Open embedded signing
-          openEmbeddedSigning(result.data.signUrl);
-        } else {
-          alert('Signature request sent successfully via email!');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          if (result.signUrl) {
+            // Open embedded signing
+            openEmbeddedSigning(result.signUrl);
+          } else {
+            alert('Signature request sent successfully via email!');
+          }
+          
+          // Reset form
+          setSelectedFile(null);
+          setFormData({
+            title: '',
+            subject: 'Document for Signature',
+            message: 'Please review and sign this document.',
+            signerEmail: '',
+            signerName: '',
+            useEmail: false,
+            templateId: ''
+          });
+          document.getElementById('file-upload').value = '';
         }
-        
-        // Reset form
-        setSelectedFile(null);
-        setFormData({
-          title: '',
-          subject: 'Document for Signature',
-          message: 'Please review and sign this document.',
-          signerEmail: '',
-          signerName: '',
-          useEmail: false,
-          templateId: ''
-        });
-        document.getElementById('file-upload').value = '';
+      } else {
+        const error = await response.json();
+        console.error('Error response:', error);
+        alert(error.error || 'Error creating signature request. Please try again.');
       }
     } catch (error) {
       console.error('Error creating signature request:', error);
@@ -130,23 +178,42 @@ const HelloSign = ({ user }) => {
 
     setLoading(true);
     try {
-      const createTemplateRequest = httpsCallable(functions, 'createTemplateRequest');
-      const result = await createTemplateRequest(formData);
+      const token = await getAuthToken();
+      if (!token) {
+        alert('Please sign in to use this feature');
+        setLoading(false);
+        return;
+      }
 
-      if (result.data.success) {
-        if (result.data.signUrl) {
-          openEmbeddedSigning(result.data.signUrl);
-        } else {
-          alert('Template signature request sent successfully!');
+      const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/createTemplateRequest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          if (result.signUrl) {
+            openEmbeddedSigning(result.signUrl);
+          } else {
+            alert('Template signature request sent successfully!');
+          }
+          
+          // Reset form
+          setFormData({
+            ...formData,
+            signerEmail: '',
+            signerName: '',
+            templateId: ''
+          });
         }
-        
-        // Reset form
-        setFormData({
-          ...formData,
-          signerEmail: '',
-          signerName: '',
-          templateId: ''
-        });
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Error creating template request. Please try again.');
       }
     } catch (error) {
       console.error('Error creating template request:', error);
@@ -180,12 +247,31 @@ const HelloSign = ({ user }) => {
   const checkStatus = async (requestId) => {
     setLoading(true);
     try {
-      const getSignatureStatus = httpsCallable(functions, 'getSignatureStatus');
-      const result = await getSignatureStatus({ requestId });
+      const token = await getAuthToken();
+      if (!token) {
+        alert('Please sign in to use this feature');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/getSignatureStatus', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
       
-      if (result.data.success) {
-        alert(`Status: ${result.data.status}`);
-        loadRequests(); // Refresh list
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert(`Status: ${result.status}`);
+          loadRequests(); // Refresh list
+        }
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Error checking status');
       }
     } catch (error) {
       console.error('Error checking status:', error);
@@ -199,11 +285,30 @@ const HelloSign = ({ user }) => {
   const downloadDocument = async (requestId) => {
     setLoading(true);
     try {
-      const downloadSignedDocument = httpsCallable(functions, 'downloadSignedDocument');
-      const result = await downloadSignedDocument({ requestId });
+      const token = await getAuthToken();
+      if (!token) {
+        alert('Please sign in to use this feature');
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/downloadSignedDocument', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ requestId })
+      });
       
-      if (result.data.success && result.data.downloadUrl) {
-        window.open(result.data.downloadUrl, '_blank');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.downloadUrl) {
+          window.open(result.downloadUrl, '_blank');
+        }
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Error downloading document');
       }
     } catch (error) {
       console.error('Error downloading document:', error);
