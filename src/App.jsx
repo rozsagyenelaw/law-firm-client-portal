@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send, PenTool } from 'lucide-react';
+import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send, PenTool, Edit3 } from 'lucide-react';
 import { 
  createUserWithEmailAndPassword, 
  signInWithEmailAndPassword, 
@@ -33,6 +33,7 @@ import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
 import Appointments from './components/Appointments';
 import DocumentSigning from './components/DocumentSigning';
+import HelloSign from './components/HelloSign';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -651,6 +652,7 @@ const ClientPortal = () => {
              {[
                { id: 'dashboard', icon: Home, label: 'Dashboard' },
                { id: 'documents', icon: FileText, label: 'Documents' },
+               { id: 'hellosign', icon: Edit3, label: 'E-Signatures' },
                { id: 'appointments', icon: Calendar, label: 'Appointments' },
                { id: 'messages', icon: MessageSquare, label: 'Messages' },
                { id: 'billing', icon: DollarSign, label: 'Billing' },
@@ -905,6 +907,11 @@ const ClientPortal = () => {
                </div>
              </div>
            </div>
+         )}
+
+         {/* HelloSign Tab */}
+         {activeTab === 'hellosign' && (
+           <HelloSign user={user} />
          )}
 
          {/* Appointments */}
