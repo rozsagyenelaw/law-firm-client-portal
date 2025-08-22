@@ -54,7 +54,7 @@ exports.createSignatureRequest = functions.https.onRequest((req, res) => {
       console.log('Creating signature request for:', signerEmail);
 
       const opts = {
-        test_mode: 1, // Set to 0 for production
+        test_mode: 0, // Production mode
         title: title,
         subject: subject,
         message: message,
@@ -149,7 +149,7 @@ exports.createTemplateRequest = functions.https.onRequest((req, res) => {
       console.log('Creating template signature request for:', signerEmail);
 
       const opts = {
-        test_mode: 1, // Set to 0 for production
+        test_mode: 0, // Production mode
         template_id: templateId,
         subject: 'Document for Signature',
         message: 'Please sign this document.',
