@@ -1,7 +1,8 @@
 require('dotenv').config();
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const cors = require('cors')({origin: true});
+const cors = require('cors')({ origin: true });
+const docusign = require('docusign-esign');
 
 // Initialize admin if not already initialized
 if (!admin.apps.length) {
@@ -10,397 +11,350 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Helper function to initialize HelloSign SDK
-const getHelloSignClient = () => {
-  const apiKey = process.env.HELLOSIGN_API_KEY;
-  if (!apiKey) {
-    throw new Error('HelloSign API key not configured');
-  }
-  return require('hellosign-sdk')({ key: apiKey });
+// DocuSign configuration
+const DOCUSIGN_CONFIG = {
+  integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
+  userId: process.env.DOCUSIGN_USER_ID,
+  accountId: process.env.DOCUSIGN_ACCOUNT_ID,
+  basePath: process.env.DOCUSIGN_BASE_PATH,
+  oAuthBasePath: process.env.DOCUSIGN_OAUTH_BASE_PATH,
+  privateKey: process.env.DOCUSIGN_PRIVATE_KEY,
+  redirectUri: 'https://portal.livingtrust-attorneys.com/callback'
 };
 
-// Create a signature request for uploaded PDF
-exports.createSignatureRequest = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    try {
-      // Check authentication
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+// Helper function to get DocuSign API client
+async function getDocuSignClient() {
+  const apiClient = new docusign.ApiClient();
+  apiClient.setBasePath(DOCUSIGN_CONFIG.basePath);
 
-      const idToken = authHeader.split('Bearer ')[1];
-      
-      // Verify the Firebase ID token
-      let decodedToken;
-      try {
-        decodedToken = await admin.auth().verifyIdToken(idToken);
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const hellosign = getHelloSignClient();
-      const { 
-        title, 
-        subject, 
-        message, 
-        signerEmail, 
-        signerName, 
-        fileUrl,
-        useEmail = false 
-      } = req.body;
-
-      console.log('Creating signature request for:', signerEmail);
-
-      const opts = {
-        test_mode: 0, // Production mode
-        title: title,
-        subject: subject,
-        message: message,
-        signers: [
-          {
-            email_address: signerEmail,
-            name: signerName
-          }
-        ],
-        file_url: [fileUrl]
-      };
-
-      // Add client ID for embedded signing
-      if (!useEmail) {
-        const clientId = process.env.HELLOSIGN_CLIENT_ID;
-        if (clientId) {
-          opts.client_id = clientId;
-        }
-      }
-
-      const result = await hellosign.signatureRequest.send(opts);
-
-      // Save request info to Firestore
-      await db.collection('signatureRequests').doc(result.signature_request.signature_request_id).set({
-        requestId: result.signature_request.signature_request_id,
-        title: title,
-        signerEmail: signerEmail,
-        signerName: signerName,
-        status: 'sent',
-        createdBy: decodedToken.uid,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        useEmail: useEmail,
-        signatures: result.signature_request.signatures
-      });
-
-      // If embedded signing, get the sign URL
-      if (!useEmail && result.signature_request.signatures && result.signature_request.signatures[0]) {
-        const signatureId = result.signature_request.signatures[0].signature_id;
-        const embeddedResult = await hellosign.embedded.getSignUrl(signatureId);
-        
-        return res.status(200).json({
-          success: true,
-          requestId: result.signature_request.signature_request_id,
-          signUrl: embeddedResult.embedded.sign_url,
-          expiresAt: embeddedResult.embedded.expires_at
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        requestId: result.signature_request.signature_request_id,
-        message: 'Signature request sent via email'
-      });
-
-    } catch (error) {
-      console.error('Error creating signature request:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  });
-});
-
-// Create signature request from template
-exports.createTemplateRequest = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    try {
-      // Check authentication
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const idToken = authHeader.split('Bearer ')[1];
-      
-      // Verify the Firebase ID token
-      let decodedToken;
-      try {
-        decodedToken = await admin.auth().verifyIdToken(idToken);
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const hellosign = getHelloSignClient();
-      const { 
-        templateId, 
-        signerEmail, 
-        signerName,
-        customFields = {},
-        useEmail = false
-      } = req.body;
-
-      console.log('Creating template signature request for:', signerEmail);
-
-      const opts = {
-        test_mode: 0, // Production mode
-        template_id: templateId,
-        subject: 'Document for Signature',
-        message: 'Please sign this document.',
-        signers: [
-          {
-            email_address: signerEmail,
-            name: signerName,
-            role: 'Client' // Adjust based on your template
-          }
-        ]
-      };
-
-      // Add custom fields if provided
-      if (Object.keys(customFields).length > 0) {
-        opts.custom_fields = Object.entries(customFields).map(([key, value]) => ({
-          name: key,
-          value: value
-        }));
-      }
-
-      // Add client ID for embedded signing
-      if (!useEmail) {
-        const clientId = process.env.HELLOSIGN_CLIENT_ID;
-        if (clientId) {
-          opts.client_id = clientId;
-        }
-      }
-
-      const result = await hellosign.signatureRequest.sendWithTemplate(opts);
-
-      // Save to Firestore
-      await db.collection('signatureRequests').doc(result.signature_request.signature_request_id).set({
-        requestId: result.signature_request.signature_request_id,
-        templateId: templateId,
-        signerEmail: signerEmail,
-        signerName: signerName,
-        status: 'sent',
-        createdBy: decodedToken.uid,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        useEmail: useEmail,
-        signatures: result.signature_request.signatures
-      });
-
-      // If embedded signing, get the sign URL
-      if (!useEmail && result.signature_request.signatures && result.signature_request.signatures[0]) {
-        const signatureId = result.signature_request.signatures[0].signature_id;
-        const embeddedResult = await hellosign.embedded.getSignUrl(signatureId);
-        
-        return res.status(200).json({
-          success: true,
-          requestId: result.signature_request.signature_request_id,
-          signUrl: embeddedResult.embedded.sign_url,
-          expiresAt: embeddedResult.embedded.expires_at
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        requestId: result.signature_request.signature_request_id,
-        message: 'Template signature request sent'
-      });
-
-    } catch (error) {
-      console.error('Error creating template request:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  });
-});
-
-// Get signature request status
-exports.getSignatureStatus = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    try {
-      // Check authentication
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const idToken = authHeader.split('Bearer ')[1];
-      
-      // Verify the Firebase ID token
-      try {
-        await admin.auth().verifyIdToken(idToken);
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const hellosign = getHelloSignClient();
-      const { requestId } = req.body;
-
-      // Get from HelloSign API
-      const result = await hellosign.signatureRequest.get(requestId);
-      
-      // Update Firestore
-      await db.collection('signatureRequests').doc(requestId).update({
-        status: result.signature_request.is_complete ? 'completed' : 'pending',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      return res.status(200).json({
-        success: true,
-        status: result.signature_request.is_complete ? 'completed' : 'pending',
-        signatures: result.signature_request.signatures,
-        filesUrl: result.signature_request.files_url
-      });
-
-    } catch (error) {
-      console.error('Error getting signature status:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  });
-});
-
-// Download signed document
-exports.downloadSignedDocument = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    try {
-      // Check authentication
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const idToken = authHeader.split('Bearer ')[1];
-      
-      // Verify the Firebase ID token
-      try {
-        await admin.auth().verifyIdToken(idToken);
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const hellosign = getHelloSignClient();
-      const { requestId } = req.body;
-
-      // Get download URL from HelloSign
-      const result = await hellosign.signatureRequest.download(requestId, { file_type: 'pdf' });
-      
-      return res.status(200).json({
-        success: true,
-        downloadUrl: result.file_url,
-        expiresAt: result.expires_at
-      });
-
-    } catch (error) {
-      console.error('Error downloading document:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  });
-});
-
-// List all templates
-exports.listTemplates = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    try {
-      // Check authentication
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const idToken = authHeader.split('Bearer ')[1];
-      
-      // Verify the Firebase ID token
-      try {
-        await admin.auth().verifyIdToken(idToken);
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-
-      const hellosign = getHelloSignClient();
-      const result = await hellosign.template.list();
-      
-      return res.status(200).json({
-        success: true,
-        templates: result.templates.map(t => ({
-          id: t.template_id,
-          title: t.title,
-          message: t.message,
-          signerRoles: t.signer_roles
-        }))
-      });
-
-    } catch (error) {
-      console.error('Error listing templates:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  });
-});
-
-// Webhook for signature events
-exports.helloSignWebhook = functions.https.onRequest(async (req, res) => {
+  // JWT authentication
+  const jwtLifeSec = 10 * 60; // 10 minutes
+  const scopes = 'signature impersonation';
+  
   try {
-    const event = req.body;
-    const apiKey = process.env.HELLOSIGN_API_KEY;
+    const results = await apiClient.requestJWTUserToken(
+      DOCUSIGN_CONFIG.integrationKey,
+      DOCUSIGN_CONFIG.userId,
+      scopes,
+      DOCUSIGN_CONFIG.privateKey,
+      jwtLifeSec
+    );
+
+    const accessToken = results.body.access_token;
+    apiClient.addDefaultHeader('Authorization', 'Bearer ' + accessToken);
     
-    if (!apiKey) {
-      console.error('HelloSign API key not configured');
-      return res.status(500).send('Configuration error');
-    }
-
-    const hellosign = require('hellosign-sdk')({ key: apiKey });
-    
-    // Verify the event came from HelloSign
-    if (!hellosign.utils.isValidSignature(
-      apiKey,
-      req.headers['hellosign-signature'],
-      JSON.stringify(event)
-    )) {
-      console.error('Invalid signature on webhook');
-      return res.status(401).send('Unauthorized');
-    }
-
-    // Handle different event types
-    const eventType = event.event.event_type;
-    const signatureRequestId = event.signature_request.signature_request_id;
-
-    console.log(`Received ${eventType} event for request ${signatureRequestId}`);
-
-    switch (eventType) {
-      case 'signature_request_signed':
-        await db.collection('signatureRequests').doc(signatureRequestId).update({
-          status: 'signed',
-          signedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        break;
-        
-      case 'signature_request_all_signed':
-        await db.collection('signatureRequests').doc(signatureRequestId).update({
-          status: 'completed',
-          completedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        break;
-        
-      case 'signature_request_declined':
-        await db.collection('signatureRequests').doc(signatureRequestId).update({
-          status: 'declined',
-          declinedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        break;
-    }
-
-    // Return the expected response
-    res.status(200).send('Hello API Event Received');
-    
+    return apiClient;
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).send('Error processing webhook');
+    console.error('DocuSign authentication error:', error);
+    throw new functions.https.HttpsError('internal', 'DocuSign authentication failed');
   }
+}
+
+// Create envelope for signature
+exports.createSignatureRequest = functions.https.onCall(async (data, context) => {
+  // Check authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { 
+    title, 
+    subject, 
+    message, 
+    signerEmail, 
+    signerName, 
+    fileUrl,
+    useEmail = false 
+  } = data;
+
+  try {
+    console.log('Creating DocuSign envelope for:', signerEmail);
+
+    const apiClient = await getDocuSignClient();
+    const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+    // Download the document from Firebase Storage
+    const response = await fetch(fileUrl);
+    const documentBuffer = await response.buffer();
+    const documentBase64 = documentBuffer.toString('base64');
+
+    // Create envelope definition
+    const envelope = new docusign.EnvelopeDefinition();
+    envelope.emailSubject = subject;
+    envelope.emailBlurb = message;
+    envelope.status = 'sent';
+
+    // Create document
+    const document = new docusign.Document();
+    document.documentBase64 = documentBase64;
+    document.name = title;
+    document.fileExtension = 'pdf';
+    document.documentId = '1';
+
+    envelope.documents = [document];
+
+    // Create signer
+    const signer = new docusign.Signer();
+    signer.email = signerEmail;
+    signer.name = signerName;
+    signer.recipientId = '1';
+    signer.routingOrder = '1';
+
+    // Add signature tab
+    const signTab = new docusign.SignHere();
+    signTab.documentId = '1';
+    signTab.pageNumber = '1';
+    signTab.recipientId = '1';
+    signTab.tabLabel = 'SignHereTab';
+    signTab.xPosition = '195';
+    signTab.yPosition = '147';
+
+    signer.tabs = new docusign.Tabs();
+    signer.tabs.signHereTabs = [signTab];
+
+    // Set recipient action based on signing method
+    if (!useEmail) {
+      signer.clientUserId = '1000'; // For embedded signing
+    }
+
+    envelope.recipients = new docusign.Recipients();
+    envelope.recipients.signers = [signer];
+
+    // Create the envelope
+    const envelopeResult = await envelopesApi.createEnvelope(DOCUSIGN_CONFIG.accountId, {
+      envelopeDefinition: envelope
+    });
+
+    const envelopeId = envelopeResult.envelopeId;
+
+    // Save envelope info to Firestore
+    await db.collection('signatureRequests').doc(envelopeId).set({
+      requestId: envelopeId,
+      title: title,
+      signerEmail: signerEmail,
+      signerName: signerName,
+      status: 'sent',
+      createdBy: context.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      useEmail: useEmail,
+      provider: 'docusign'
+    });
+
+    let result = {
+      requestId: envelopeId,
+      status: 'sent'
+    };
+
+    // If embedded signing, get the signing URL
+    if (!useEmail) {
+      const recipientView = new docusign.RecipientViewRequest();
+      recipientView.authenticationMethod = 'none';
+      recipientView.email = signerEmail;
+      recipientView.userName = signerName;
+      recipientView.clientUserId = '1000';
+      recipientView.returnUrl = 'https://portal.livingtrust-attorneys.com/signing-complete';
+
+      const viewResult = await envelopesApi.createRecipientView(
+        DOCUSIGN_CONFIG.accountId,
+        envelopeId,
+        { recipientViewRequest: recipientView }
+      );
+
+      result.signUrl = viewResult.url;
+    }
+
+    console.log('DocuSign envelope created successfully:', envelopeId);
+    return result;
+
+  } catch (error) {
+    console.error('Error creating DocuSign envelope:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to create signature request');
+  }
+});
+
+// Get envelope status
+exports.getSignatureStatus = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { requestId } = data;
+
+  try {
+    const apiClient = await getDocuSignClient();
+    const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+    const envelope = await envelopesApi.getEnvelope(DOCUSIGN_CONFIG.accountId, requestId);
+    
+    // Update Firestore with current status
+    await db.collection('signatureRequests').doc(requestId).update({
+      status: envelope.status.toLowerCase(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return {
+      requestId: requestId,
+      status: envelope.status.toLowerCase(),
+      statusDateTime: envelope.statusChangedDateTime
+    };
+
+  } catch (error) {
+    console.error('Error getting envelope status:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to get signature status');
+  }
+});
+
+// Download completed document
+exports.getSignedDocument = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { requestId } = data;
+
+  try {
+    const apiClient = await getDocuSignClient();
+    const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+    // Get the completed document
+    const document = await envelopesApi.getDocument(
+      DOCUSIGN_CONFIG.accountId, 
+      requestId, 
+      'combined'
+    );
+
+    // Upload to Firebase Storage
+    const bucket = admin.storage().bucket();
+    const fileName = `signed-documents/${requestId}-signed.pdf`;
+    const file = bucket.file(fileName);
+
+    await file.save(document, {
+      metadata: {
+        contentType: 'application/pdf'
+      }
+    });
+
+    // Make file publicly readable
+    await file.makePublic();
+
+    const downloadUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    // Update Firestore with download URL
+    await db.collection('signatureRequests').doc(requestId).update({
+      signedDocumentUrl: downloadUrl,
+      completedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return {
+      downloadUrl: downloadUrl
+    };
+
+  } catch (error) {
+    console.error('Error downloading signed document:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to download signed document');
+  }
+});
+
+// DocuSign webhook handler
+exports.docusignWebhook = functions.https.onRequest((req, res) => {
+  cors(req, res, async () => {
+    try {
+      console.log('DocuSign webhook received:', req.body);
+
+      const eventData = req.body;
+      
+      if (eventData.event === 'envelope-completed') {
+        const envelopeId = eventData.data.envelopeId;
+        
+        // Update Firestore
+        await db.collection('signatureRequests').doc(envelopeId).update({
+          status: 'completed',
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          webhookData: eventData
+        });
+
+        console.log('Envelope completed:', envelopeId);
+      }
+
+      res.status(200).send('OK');
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.status(500).send('Error processing webhook');
+    }
+  });
+});
+
+// List user's signature requests
+exports.listSignatureRequests = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  try {
+    const snapshot = await db.collection('signatureRequests')
+      .where('createdBy', '==', context.auth.uid)
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+
+    const requests = [];
+    snapshot.forEach(doc => {
+      requests.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    return { requests };
+
+  } catch (error) {
+    console.error('Error listing signature requests:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to list signature requests');
+  }
+});
+
+// Cancel envelope
+exports.cancelSignatureRequest = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { requestId } = data;
+
+  try {
+    const apiClient = await getDocuSignClient();
+    const envelopesApi = new docusign.EnvelopesApi(apiClient);
+
+    // Update envelope status to voided
+    const envelope = new docusign.Envelope();
+    envelope.status = 'voided';
+    envelope.voidedReason = 'Cancelled by user';
+
+    await envelopesApi.update(DOCUSIGN_CONFIG.accountId, requestId, {
+      envelope: envelope
+    });
+
+    // Update Firestore
+    await db.collection('signatureRequests').doc(requestId).update({
+      status: 'cancelled',
+      cancelledAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true };
+
+  } catch (error) {
+    console.error('Error cancelling envelope:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to cancel signature request');
+  }
+});
+
+// Health check endpoint
+exports.healthCheck = functions.https.onRequest((req, res) => {
+  cors(req, res, () => {
+    res.status(200).json({
+      status: 'healthy',
+      provider: 'docusign',
+      timestamp: new Date().toISOString()
+    });
+  });
 });

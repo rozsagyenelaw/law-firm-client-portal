@@ -1,0 +1,30 @@
+[33m9bcd341[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Merge remote changes and keep HelloSign integration
+[33m309d785[m Add HelloSign integration to App.jsx and Firebase functions
+[33mb036943[m Add HelloSign integration for document signatures
+[33m123841f[m Update index.js
+[33m2cdcc56[m Update HelloSignIntegration.jsx
+[33m0c20ae3[m Update App.jsx
+[33mb3b7d85[m Update App.jsx
+[33m1b5b8f8[m Create HelloSignIntegration.jsx
+[33m20fa39d[m Update App.jsx
+[33mc43c4dc[m Add HelloSign integration for document signing
+[33m00afc5f[m Update App.jsx
+[33md78d60d[m Update DocumentSigning.jsx
+[33m8aa85fa[m Update DocumentSigning.jsx
+[33m9140f5e[m Update DocumentSigning.jsx
+[33m068f854[m Update DocumentSigning.jsx
+[33mf0d95dc[m Update package.json
+[33mf464219[m Update package.json
+[33madd1d4f[m Update DocumentSigning.jsx
+[33m269bcd9[m Update DocumentSigning.jsx
+[33m5f41dc9[m Update package.json
+[33m359abb3[m Update DocumentSigning.jsx
+[33m285e477[m Update index.js
+[33me6f62e2[m Update DocumentSigning.jsx
+[33m7a78f2d[m Update index.js
+[33m6eb3dde[m Update index.js
+[33mef1ef0e[m Update DocumentSigning.jsx
+[33m9e805c5[m Update DocumentSigning.jsx
+[33mef06f91[m Update DocumentSigning.jsx
+[33m7bc56fe[m Update DocumentSigning.jsx
+[33m434425f[m Update index.js

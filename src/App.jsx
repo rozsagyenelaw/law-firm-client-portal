@@ -33,7 +33,7 @@ import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
 import Appointments from './components/Appointments';
 import DocumentSigning from './components/DocumentSigning';
-import HelloSign from './components/HelloSign';
+import DocuSign from './components/HelloSign';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -652,7 +652,7 @@ const ClientPortal = () => {
              {[
                { id: 'dashboard', icon: Home, label: 'Dashboard' },
                { id: 'documents', icon: FileText, label: 'Documents' },
-               { id: 'hellosign', icon: Edit3, label: 'E-Signatures' },
+               { id: 'docusign', icon: Edit3, label: 'E-Signatures' },
                { id: 'appointments', icon: Calendar, label: 'Appointments' },
                { id: 'messages', icon: MessageSquare, label: 'Messages' },
                { id: 'billing', icon: DollarSign, label: 'Billing' },
@@ -909,9 +909,9 @@ const ClientPortal = () => {
            </div>
          )}
 
-         {/* HelloSign Tab */}
-         {activeTab === 'hellosign' && (
-           <HelloSign user={user} />
+         {/* DocuSign Tab */}
+         {activeTab === 'docusign' && (
+           <DocuSign user={user} />
          )}
 
          {/* Appointments */}
