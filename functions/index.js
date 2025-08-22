@@ -11,14 +11,14 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// DocuSign configuration
+// DocuSign configuration - reads from Firebase config first, falls back to .env for local development
 const DOCUSIGN_CONFIG = {
-  integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
-  userId: process.env.DOCUSIGN_USER_ID,
-  accountId: process.env.DOCUSIGN_ACCOUNT_ID,
-  basePath: process.env.DOCUSIGN_BASE_PATH,
-  oAuthBasePath: process.env.DOCUSIGN_OAUTH_BASE_PATH,
-  privateKey: process.env.DOCUSIGN_PRIVATE_KEY,
+  integrationKey: functions.config().docusign?.integration_key || process.env.DOCUSIGN_INTEGRATION_KEY,
+  userId: functions.config().docusign?.user_id || process.env.DOCUSIGN_USER_ID,
+  accountId: functions.config().docusign?.account_id || process.env.DOCUSIGN_ACCOUNT_ID,
+  basePath: functions.config().docusign?.base_path || process.env.DOCUSIGN_BASE_PATH,
+  oAuthBasePath: functions.config().docusign?.oauth_base_path || process.env.DOCUSIGN_OAUTH_BASE_PATH,
+  privateKey: functions.config().docusign?.private_key || process.env.DOCUSIGN_PRIVATE_KEY,
   redirectUri: 'https://portal.livingtrust-attorneys.com/callback'
 };
 
@@ -46,6 +46,14 @@ async function getDocuSignClient() {
     return apiClient;
   } catch (error) {
     console.error('DocuSign authentication error:', error);
+    console.error('Config values present:', {
+      hasIntegrationKey: !!DOCUSIGN_CONFIG.integrationKey,
+      hasUserId: !!DOCUSIGN_CONFIG.userId,
+      hasAccountId: !!DOCUSIGN_CONFIG.accountId,
+      hasBasePath: !!DOCUSIGN_CONFIG.basePath,
+      hasOAuthBasePath: !!DOCUSIGN_CONFIG.oAuthBasePath,
+      hasPrivateKey: !!DOCUSIGN_CONFIG.privateKey
+    });
     throw new functions.https.HttpsError('internal', 'DocuSign authentication failed');
   }
 }
@@ -69,6 +77,13 @@ exports.createSignatureRequest = functions.https.onCall(async (data, context) =>
 
   try {
     console.log('Creating DocuSign envelope for:', signerEmail);
+    console.log('Config check:', {
+      hasIntegrationKey: !!DOCUSIGN_CONFIG.integrationKey,
+      hasUserId: !!DOCUSIGN_CONFIG.userId,
+      hasAccountId: !!DOCUSIGN_CONFIG.accountId,
+      basePath: DOCUSIGN_CONFIG.basePath,
+      oAuthBasePath: DOCUSIGN_CONFIG.oAuthBasePath
+    });
 
     const apiClient = await getDocuSignClient();
     const envelopesApi = new docusign.EnvelopesApi(apiClient);
@@ -168,7 +183,7 @@ exports.createSignatureRequest = functions.https.onCall(async (data, context) =>
 
   } catch (error) {
     console.error('Error creating DocuSign envelope:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to create signature request');
+    throw new functions.https.HttpsError('internal', `Failed to create signature request: ${error.message}`);
   }
 });
 

@@ -11,7 +11,7 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, auth, functions } from '../firebase';
-import { httpsCallable } from 'firebase/functions';
+import { httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
 import { Upload, FileText, Send, CheckCircle, Clock, X, Eye, RefreshCw } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
@@ -70,6 +70,15 @@ function DocuSign({ user }) {
 
     setLoading(true);
     try {
+      // Make sure user is authenticated
+      if (!auth.currentUser) {
+        throw new Error('You must be logged in to create signature requests');
+      }
+
+      // Get the ID token to ensure authentication
+      const idToken = await auth.currentUser.getIdToken();
+      console.log('User authenticated:', auth.currentUser.uid);
+
       // Upload PDF to Firebase Storage
       const storageRef = ref(storage, `signatures/${user.uid}/${Date.now()}_${uploadFile.name}`);
       const snapshot = await uploadBytes(storageRef, uploadFile);
@@ -78,25 +87,26 @@ function DocuSign({ user }) {
       // Create DocuSign envelope
       const createEnvelope = httpsCallable(functions, 'createSignatureRequest');
       const result = await createEnvelope({
-        documentTitle: formData.title || uploadFile.name,
-        documentUrl: fileUrl,
-        signerName: formData.signerName,
-        signerEmail: formData.signerEmail,
+        title: formData.title || uploadFile.name,
+        subject: `Please sign: ${formData.title || uploadFile.name}`,
         message: formData.message,
-        sendViaEmail: formData.sendViaEmail
+        signerEmail: formData.signerEmail,
+        signerName: formData.signerName,
+        fileUrl: fileUrl,
+        useEmail: formData.sendViaEmail
       });
 
-      if (result.data.success) {
+      if (result.data.requestId) {
         // Save request to Firestore
         await addDoc(collection(db, 'docusignRequests'), {
           userId: user.uid,
-          envelopeId: result.data.envelopeId,
+          envelopeId: result.data.requestId,
           documentTitle: formData.title || uploadFile.name,
           signerName: formData.signerName,
           signerEmail: formData.signerEmail,
           status: 'sent',
           createdAt: serverTimestamp(),
-          embeddedUrl: result.data.embeddedUrl || null
+          embeddedUrl: result.data.signUrl || null
         });
 
         alert('Document sent for signature successfully!');
@@ -116,11 +126,11 @@ function DocuSign({ user }) {
         if (fileInput) fileInput.value = '';
         
         // If embedded signing, open the signing URL
-        if (!formData.sendViaEmail && result.data.embeddedUrl) {
-          window.open(result.data.embeddedUrl, '_blank');
+        if (!formData.sendViaEmail && result.data.signUrl) {
+          window.open(result.data.signUrl, '_blank');
         }
       } else {
-        throw new Error(result.data.error || 'Failed to create signature request');
+        throw new Error('Failed to create signature request');
       }
     } catch (error) {
       console.error('Error creating signature request:', error);
@@ -133,17 +143,15 @@ function DocuSign({ user }) {
   const checkStatus = async (envelopeId, requestId) => {
     try {
       const getStatus = httpsCallable(functions, 'getSignatureStatus');
-      const result = await getStatus({ envelopeId });
+      const result = await getStatus({ requestId: envelopeId });
       
-      if (result.data.success) {
+      if (result.data) {
         // Update status in Firestore
         await updateDoc(doc(db, 'docusignRequests', requestId), {
           status: result.data.status,
           lastChecked: serverTimestamp()
         });
         alert(`Document status: ${result.data.status}`);
-      } else {
-        throw new Error(result.data.error || 'Failed to check status');
       }
     } catch (error) {
       console.error('Error checking status:', error);
