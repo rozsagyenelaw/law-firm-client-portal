@@ -22,7 +22,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app);
+
+// Initialize Functions with the correct region
+export const functions = getFunctions(app, 'us-central1');
 
 // Stripe publishable key
 export const STRIPE_PUBLISHABLE_KEY = "pk_live_51RQxRiLLy2lrya6t1VUp5Zl0kOvs0TprmtQMPO4uxrTimy7RqqX9XFyMzMMelV7jDOSGTrY29Lne4nLKiOINxtRr00Bd3kmxBb";

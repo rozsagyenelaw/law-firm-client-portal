@@ -11,7 +11,7 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, auth, functions } from '../firebase';
-import { httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
 import { Upload, FileText, Send, CheckCircle, Clock, X, Eye, RefreshCw } from 'lucide-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
@@ -84,17 +84,50 @@ function DocuSign({ user }) {
       const snapshot = await uploadBytes(storageRef, uploadFile);
       const fileUrl = await getDownloadURL(snapshot.ref);
 
-      // Create DocuSign envelope
-      const createEnvelope = httpsCallable(functions, 'createSignatureRequest');
-      const result = await createEnvelope({
-        title: formData.title || uploadFile.name,
-        subject: `Please sign: ${formData.title || uploadFile.name}`,
-        message: formData.message,
-        signerEmail: formData.signerEmail,
-        signerName: formData.signerName,
-        fileUrl: fileUrl,
-        useEmail: formData.sendViaEmail
-      });
+      // Try callable function first (this is the preferred method)
+      let result;
+      try {
+        // Try using the callable function
+        const createEnvelope = httpsCallable(functions, 'createSignatureRequest');
+        result = await createEnvelope({
+          title: formData.title || uploadFile.name,
+          subject: `Please sign: ${formData.title || uploadFile.name}`,
+          message: formData.message,
+          signerEmail: formData.signerEmail,
+          signerName: formData.signerName,
+          fileUrl: fileUrl,
+          useEmail: formData.sendViaEmail
+        });
+      } catch (callableError) {
+        console.log('Callable function failed, trying HTTP endpoint with auth token...');
+        
+        // If callable fails, try HTTP endpoint with manual auth token
+        const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/createSignatureRequest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}` // Pass the auth token
+          },
+          body: JSON.stringify({
+            title: formData.title || uploadFile.name,
+            subject: `Please sign: ${formData.title || uploadFile.name}`,
+            message: formData.message,
+            signerEmail: formData.signerEmail,
+            signerName: formData.signerName,
+            fileUrl: fileUrl,
+            useEmail: formData.sendViaEmail,
+            userId: auth.currentUser.uid // Also pass userId in body as backup
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const responseData = await response.json();
+        result = { data: responseData };
+      }
 
       if (result.data.requestId) {
         // Save request to Firestore
@@ -142,8 +175,38 @@ function DocuSign({ user }) {
 
   const checkStatus = async (envelopeId, requestId) => {
     try {
-      const getStatus = httpsCallable(functions, 'getSignatureStatus');
-      const result = await getStatus({ requestId: envelopeId });
+      // Get auth token for authenticated requests
+      const idToken = await auth.currentUser.getIdToken();
+      
+      let result;
+      try {
+        // Try callable function first
+        const getStatus = httpsCallable(functions, 'getSignatureStatus');
+        result = await getStatus({ requestId: envelopeId });
+      } catch (callableError) {
+        console.log('Callable function failed, trying HTTP endpoint...');
+        
+        // Fallback to HTTP endpoint with auth
+        const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/getSignatureStatus', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ 
+            requestId: envelopeId,
+            userId: auth.currentUser.uid 
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const responseData = await response.json();
+        result = { data: responseData };
+      }
       
       if (result.data) {
         // Update status in Firestore

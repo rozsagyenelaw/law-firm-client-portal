@@ -58,11 +58,25 @@ async function getDocuSignClient() {
   }
 }
 
-// Create envelope for signature
+// Create envelope for signature - UPDATED WITH BETTER AUTH HANDLING
 exports.createSignatureRequest = functions.https.onCall(async (data, context) => {
+  // Log the auth context for debugging
+  console.log('Function called with auth context:', {
+    hasAuth: !!context.auth,
+    uid: context.auth?.uid,
+    token: context.auth?.token ? 'present' : 'missing',
+    authTime: context.auth?.token?.auth_time
+  });
+
   // Check authentication
   if (!context.auth) {
+    console.error('No auth context found');
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  if (!context.auth.uid) {
+    console.error('Auth context exists but no uid');
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated with valid uid');
   }
 
   const { 
@@ -77,6 +91,7 @@ exports.createSignatureRequest = functions.https.onCall(async (data, context) =>
 
   try {
     console.log('Creating DocuSign envelope for:', signerEmail);
+    console.log('Authenticated user:', context.auth.uid);
     console.log('Config check:', {
       hasIntegrationKey: !!DOCUSIGN_CONFIG.integrationKey,
       hasUserId: !!DOCUSIGN_CONFIG.userId,
@@ -187,9 +202,11 @@ exports.createSignatureRequest = functions.https.onCall(async (data, context) =>
   }
 });
 
-// Get envelope status
+// Get envelope status - UPDATED WITH BETTER AUTH HANDLING
 exports.getSignatureStatus = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+  console.log('getSignatureStatus called with auth:', !!context.auth);
+  
+  if (!context.auth || !context.auth.uid) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
@@ -221,7 +238,7 @@ exports.getSignatureStatus = functions.https.onCall(async (data, context) => {
 
 // Download completed document
 exports.getSignedDocument = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+  if (!context.auth || !context.auth.uid) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
@@ -301,7 +318,7 @@ exports.docusignWebhook = functions.https.onRequest((req, res) => {
 
 // List user's signature requests
 exports.listSignatureRequests = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+  if (!context.auth || !context.auth.uid) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
@@ -330,7 +347,7 @@ exports.listSignatureRequests = functions.https.onCall(async (data, context) => 
 
 // Cancel envelope
 exports.cancelSignatureRequest = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+  if (!context.auth || !context.auth.uid) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
