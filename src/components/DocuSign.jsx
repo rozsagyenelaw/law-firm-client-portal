@@ -75,61 +75,41 @@ function DocuSign({ user }) {
         throw new Error('You must be logged in to create signature requests');
       }
 
-      // Get the ID token to ensure authentication
-      const idToken = await auth.currentUser.getIdToken();
+      // Force token refresh to ensure it's valid
+      await auth.currentUser.getIdToken(true);
+      
       console.log('User authenticated:', auth.currentUser.uid);
+      console.log('Token refreshed');
+      console.log('Starting file upload...');
 
       // Upload PDF to Firebase Storage
       const storageRef = ref(storage, `signatures/${user.uid}/${Date.now()}_${uploadFile.name}`);
       const snapshot = await uploadBytes(storageRef, uploadFile);
       const fileUrl = await getDownloadURL(snapshot.ref);
+      
+      console.log('File uploaded successfully, URL:', fileUrl);
+      console.log('Calling createSignatureRequest function...');
 
-      // Try callable function first (this is the preferred method)
-      let result;
-      try {
-        // Try using the callable function
-        const createEnvelope = httpsCallable(functions, 'createSignatureRequest');
-        result = await createEnvelope({
-          title: formData.title || uploadFile.name,
-          subject: `Please sign: ${formData.title || uploadFile.name}`,
-          message: formData.message,
-          signerEmail: formData.signerEmail,
-          signerName: formData.signerName,
-          fileUrl: fileUrl,
-          useEmail: formData.sendViaEmail
-        });
-      } catch (callableError) {
-        console.log('Callable function failed, trying HTTP endpoint with auth token...');
-        
-        // If callable fails, try HTTP endpoint with manual auth token
-        const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/createSignatureRequest', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}` // Pass the auth token
-          },
-          body: JSON.stringify({
-            title: formData.title || uploadFile.name,
-            subject: `Please sign: ${formData.title || uploadFile.name}`,
-            message: formData.message,
-            signerEmail: formData.signerEmail,
-            signerName: formData.signerName,
-            fileUrl: fileUrl,
-            useEmail: formData.sendViaEmail,
-            userId: auth.currentUser.uid // Also pass userId in body as backup
-          })
-        });
+      // Call the Firebase callable function
+      const createSignatureRequest = httpsCallable(functions, 'createSignatureRequest');
+      
+      const requestData = {
+        title: formData.title || uploadFile.name,
+        subject: `Please sign: ${formData.title || uploadFile.name}`,
+        message: formData.message,
+        signerEmail: formData.signerEmail,
+        signerName: formData.signerName,
+        fileUrl: fileUrl,
+        useEmail: formData.sendViaEmail
+      };
+      
+      console.log('Request data:', requestData);
+      
+      const result = await createSignatureRequest(requestData);
+      
+      console.log('Function response:', result);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const responseData = await response.json();
-        result = { data: responseData };
-      }
-
-      if (result.data.requestId) {
+      if (result.data && result.data.requestId) {
         // Save request to Firestore
         await addDoc(collection(db, 'docusignRequests'), {
           userId: user.uid,
@@ -163,11 +143,21 @@ function DocuSign({ user }) {
           window.open(result.data.signUrl, '_blank');
         }
       } else {
-        throw new Error('Failed to create signature request');
+        throw new Error('Failed to create signature request - no request ID returned');
       }
     } catch (error) {
       console.error('Error creating signature request:', error);
-      alert(`Failed to create signature request: ${error.message}`);
+      
+      // More detailed error messaging
+      if (error.code === 'functions/unauthenticated') {
+        alert('Authentication error: Please log out and log back in.');
+      } else if (error.code === 'functions/internal') {
+        alert(`Server error: ${error.message}`);
+      } else if (error.message) {
+        alert(`Error: ${error.message}`);
+      } else {
+        alert('Failed to create signature request. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -175,38 +165,13 @@ function DocuSign({ user }) {
 
   const checkStatus = async (envelopeId, requestId) => {
     try {
-      // Get auth token for authenticated requests
-      const idToken = await auth.currentUser.getIdToken();
+      console.log('Checking status for envelope:', envelopeId);
       
-      let result;
-      try {
-        // Try callable function first
-        const getStatus = httpsCallable(functions, 'getSignatureStatus');
-        result = await getStatus({ requestId: envelopeId });
-      } catch (callableError) {
-        console.log('Callable function failed, trying HTTP endpoint...');
-        
-        // Fallback to HTTP endpoint with auth
-        const response = await fetch('https://us-central1-law-firm-client-portal.cloudfunctions.net/getSignatureStatus', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
-          },
-          body: JSON.stringify({ 
-            requestId: envelopeId,
-            userId: auth.currentUser.uid 
-          })
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const responseData = await response.json();
-        result = { data: responseData };
-      }
+      // Call the Firebase callable function
+      const getSignatureStatus = httpsCallable(functions, 'getSignatureStatus');
+      const result = await getSignatureStatus({ requestId: envelopeId });
+      
+      console.log('Status response:', result);
       
       if (result.data) {
         // Update status in Firestore
@@ -218,7 +183,12 @@ function DocuSign({ user }) {
       }
     } catch (error) {
       console.error('Error checking status:', error);
-      alert(`Failed to check status: ${error.message}`);
+      
+      if (error.code === 'functions/unauthenticated') {
+        alert('Authentication error: Please log out and log back in.');
+      } else {
+        alert(`Failed to check status: ${error.message}`);
+      }
     }
   };
 
@@ -386,7 +356,7 @@ function DocuSign({ user }) {
               ) : (
                 <>
                   <Send className="w-5 h-5" />
-                  <span>Open for Signature</span>
+                  <span>Send for Signature</span>
                 </>
               )}
             </button>
