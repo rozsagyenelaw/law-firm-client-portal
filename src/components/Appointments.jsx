@@ -77,8 +77,9 @@ const Appointments = ({ userProfile }) => {
   };
 
   const generateAvailableSlots = async (dateString) => {
-    const date = new Date(dateString);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+    // Parse the date in Pacific Time
+    const date = new Date(dateString + 'T00:00:00-08:00'); // Force Pacific Time
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Los_Angeles' }).toLowerCase();
     
     const hours = BUSINESS_HOURS[dayName];
     if (!hours) {
@@ -86,16 +87,21 @@ const Appointments = ({ userProfile }) => {
       return;
     }
 
+    // Get current time in Pacific
+    const nowPacific = new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+    const now = new Date(nowPacific);
+
     // Generate all possible time slots
     const slots = [];
     for (let hour = hours.start; hour < hours.end; hour++) {
       for (let minute = 0; minute < 60; minute += APPOINTMENT_DURATION) {
         const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        const slotDateTime = new Date(date);
-        slotDateTime.setHours(hour, minute, 0, 0);
         
-        // Only show future slots
-        if (slotDateTime > new Date()) {
+        // Create date in Pacific Time
+        const slotDateTime = new Date(dateString + `T${time}:00-08:00`);
+        
+        // Only show future slots (compare with Pacific time)
+        if (slotDateTime > now) {
           slots.push(time);
         }
       }
@@ -132,10 +138,12 @@ const Appointments = ({ userProfile }) => {
     setSuccessMessage('');
 
     try {
-      // Create appointment date object
+      // Create appointment date object in Pacific Time
       const [hours, minutes] = selectedTime.split(':');
-      const appointmentDate = new Date(selectedDate);
-      appointmentDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      
+      // Create a date string in Pacific Time format
+      const pacificDateString = `${selectedDate}T${selectedTime}:00-08:00`;
+      const appointmentDate = new Date(pacificDateString);
 
       // Create appointment document
       const appointmentData = {
