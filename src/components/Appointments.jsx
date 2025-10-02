@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Video, MapPin, CheckCircle, AlertCircle, X, Plus } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import emailjs from '@emailjs/browser';
+import { db, auth, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const Appointments = ({ userProfile }) => {
   const [appointments, setAppointments] = useState([]);
@@ -156,31 +156,22 @@ const Appointments = ({ userProfile }) => {
 
       const docRef = await addDoc(collection(db, 'appointments'), appointmentData);
 
-      // Send confirmation email
+      // Call Firebase Function to send confirmation email
       try {
-        const emailParams = {
-          client_name: appointmentData.clientName,
-          client_email: appointmentData.clientEmail,
-          appointment_date: appointmentDate.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          }),
-          appointment_time: appointmentDate.toLocaleTimeString('en-US', { 
+        const sendAppointmentEmail = httpsCallable(functions, 'sendAppointmentConfirmation');
+        await sendAppointmentEmail({
+          appointmentId: docRef.id,
+          clientName: appointmentData.clientName,
+          clientEmail: appointmentData.clientEmail,
+          appointmentDate: appointmentDate.toISOString(),
+          appointmentTime: appointmentDate.toLocaleTimeString('en-US', { 
             hour: 'numeric', 
             minute: '2-digit',
             hour12: true 
           }),
-          appointment_type: APPOINTMENT_TYPES.find(t => t.value === appointmentType)?.label,
+          appointmentType: APPOINTMENT_TYPES.find(t => t.value === appointmentType)?.label,
           notes: notes || 'None'
-        };
-
-        await emailjs.send(
-          'service_1y5vmr2',
-          'template_appointment_confirmation', // You'll need to create this template
-          emailParams
-        );
+        });
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
         // Don't fail the booking if email fails
