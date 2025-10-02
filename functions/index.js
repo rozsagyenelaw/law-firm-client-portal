@@ -72,6 +72,41 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => 
     await gmailTransporter.sendMail(mailOptions);
     console.log(`Confirmation email sent to ${clientEmail} for appointment ${appointmentId}`);
     
+    // Send notification to admin
+    const adminMailOptions = {
+      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw@yahoo.com>',
+      to: 'rozsagyenelaw@yahoo.com',
+      subject: `New Appointment Booked - ${clientName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e3a8a;">New Appointment Booked</h2>
+          
+          <p>A new appointment has been booked in your client portal.</p>
+          
+          <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #1e3a8a;">Client Information:</h3>
+            <ul style="list-style: none; padding: 0;">
+              <li style="margin: 10px 0;"><strong>Name:</strong> ${clientName}</li>
+              <li style="margin: 10px 0;"><strong>Email:</strong> ${clientEmail}</li>
+            </ul>
+            
+            <h3 style="margin-top: 20px; color: #1e3a8a;">Appointment Details:</h3>
+            <ul style="list-style: none; padding: 0;">
+              <li style="margin: 10px 0;"><strong>Date:</strong> ${new Date(appointmentDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</li>
+              <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentTime} (Pacific Time)</li>
+              <li style="margin: 10px 0;"><strong>Type:</strong> ${appointmentType}</li>
+              ${notes ? `<li style="margin: 10px 0;"><strong>Notes:</strong> ${notes}</li>` : ''}
+            </ul>
+          </div>
+          
+          <p><a href="https://console.firebase.google.com/project/law-firm-client-portal/firestore/data/~2Fappointments" style="color: #1e3a8a;">View in Firebase Console</a></p>
+        </div>
+      `
+    };
+    
+    await gmailTransporter.sendMail(adminMailOptions);
+    console.log(`Admin notification sent for appointment ${appointmentId}`);
+    
     return { success: true, message: 'Email sent successfully' };
 
   } catch (error) {
@@ -119,7 +154,7 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
               <ul style="list-style: none; padding: 0;">
                 <li style="margin: 10px 0;"><strong>Date:</strong> ${appointmentDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</li>
                 <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
-                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'In-Person Meeting'}</li>
+                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'Over the Phone'}</li>
               </ul>
             </div>
             
@@ -192,7 +227,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
               <h3 style="margin-top: 0; color: #1e3a8a;">Appointment Details:</h3>
               <ul style="list-style: none; padding: 0;">
                 <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
-                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'In-Person Meeting'}</li>
+                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'Over the Phone'}</li>
               </ul>
             </div>
             
