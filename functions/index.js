@@ -1,5 +1,5 @@
 require('dotenv').config();
-const functions = require('firebase-functions');
+const functions = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 
@@ -20,8 +20,8 @@ const gmailTransporter = nodemailer.createTransport({
 });
 
 // Send appointment confirmation email
-exports.sendAppointmentConfirmation = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
+exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => {
+  if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
@@ -33,7 +33,7 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (data, contex
     appointmentTime,
     appointmentType, 
     notes 
-  } = data;
+  } = request.data;
 
   try {
     const mailOptions = {
@@ -58,8 +58,6 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (data, contex
             </ul>
           </div>
           
-          <p>You will receive reminder emails 24 hours and 1 hour before your appointment.</p>
-          
           <p>If you need to cancel or reschedule, please log into your client portal at <a href="https://portal.livingtrust-attorneys.com">https://portal.livingtrust-attorneys.com</a></p>
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
@@ -82,8 +80,8 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (data, contex
   }
 });
 
-// Send 24-hour reminder emails
-exports.send24HourReminders = functions.pubsub.schedule('every 1 hours').onRun(async (context) => {
+// Send 24-hour reminder emails - runs every hour
+exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', async (event) => {
   try {
     const now = new Date();
     const tomorrow = new Date(now.getTime() + (24 * 60 * 60 * 1000));
@@ -150,16 +148,14 @@ exports.send24HourReminders = functions.pubsub.schedule('every 1 hours').onRun(a
     await batch.commit();
     
     console.log(`Sent ${appointmentsSnapshot.size} 24-hour reminders`);
-    return null;
 
   } catch (error) {
     console.error('Error sending 24-hour reminders:', error);
-    return null;
   }
 });
 
-// Send 1-hour reminder emails
-exports.send1HourReminders = functions.pubsub.schedule('every 15 minutes').onRun(async (context) => {
+// Send 1-hour reminder emails - runs every 15 minutes
+exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', async (event) => {
   try {
     const now = new Date();
     const oneHourFromNow = new Date(now.getTime() + (60 * 60 * 1000));
@@ -223,10 +219,8 @@ exports.send1HourReminders = functions.pubsub.schedule('every 15 minutes').onRun
     await batch.commit();
     
     console.log(`Sent ${appointmentsSnapshot.size} 1-hour reminders`);
-    return null;
 
   } catch (error) {
     console.error('Error sending 1-hour reminders:', error);
-    return null;
   }
 });
