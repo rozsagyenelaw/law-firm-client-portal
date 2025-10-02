@@ -10,7 +10,7 @@ const Appointments = ({ userProfile }) => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
-  const [appointmentType, setAppointmentType] = useState('virtual');
+  const [appointmentType, setAppointmentType] = useState('phone');
   const [notes, setNotes] = useState('');
   const [availableSlots, setAvailableSlots] = useState([]);
   const [successMessage, setSuccessMessage] = useState('');
@@ -19,7 +19,7 @@ const Appointments = ({ userProfile }) => {
 
   const APPOINTMENT_TYPES = [
     { value: 'virtual', label: 'Virtual Consultation', icon: Video },
-    { value: 'in-person', label: 'In-Person Meeting', icon: MapPin }
+    { value: 'phone', label: 'Over the Phone', icon: MapPin }
   ];
 
   // Business hours configuration
