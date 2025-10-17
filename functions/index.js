@@ -10,12 +10,12 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Create Gmail transporter
+// Create Gmail transporter - UPDATED TO USE GMAIL
 const gmailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'rozsagyenelaw@yahoo.com',
-    pass: 'zgan nkyz tcgv spzo'
+    user: 'rozsagyenelaw1@gmail.com',
+    pass: 'nwggfzkxqguhhsdc'
   }
 });
 
@@ -36,8 +36,9 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => 
   } = request.data;
 
   try {
+    // Send confirmation to client
     const mailOptions = {
-      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw@yahoo.com>',
+      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
       to: clientEmail,
       subject: 'Appointment Confirmed - Law Offices of Rozsa Gyene',
       html: `
@@ -63,7 +64,7 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => 
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
             <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
             <p style="margin: 5px 0;">Estate Planning & Probate</p>
-            <p style="margin: 5px 0;">Email: rozsagyenelaw@yahoo.com</p>
+            <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
           </div>
         </div>
       `
@@ -72,14 +73,14 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => 
     await gmailTransporter.sendMail(mailOptions);
     console.log(`Confirmation email sent to ${clientEmail} for appointment ${appointmentId}`);
     
-    // Send notification to admin
+    // Send notification to admin (YOU) - UPDATED TO GMAIL
     const adminMailOptions = {
-      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw@yahoo.com>',
-      to: 'rozsagyenelaw@yahoo.com',
-      subject: `New Appointment Booked - ${clientName}`,
+      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+      to: 'rozsagyenelaw1@gmail.com',
+      subject: `🔔 New Appointment Booked - ${clientName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e3a8a;">New Appointment Booked</h2>
+          <h2 style="color: #1e3a8a;">🎉 New Appointment Booked</h2>
           
           <p>A new appointment has been booked in your client portal.</p>
           
@@ -105,13 +106,14 @@ exports.sendAppointmentConfirmation = functions.https.onCall(async (request) => 
     };
     
     await gmailTransporter.sendMail(adminMailOptions);
-    console.log(`Admin notification sent for appointment ${appointmentId}`);
+    console.log(`Admin notification sent to rozsagyenelaw1@gmail.com for appointment ${appointmentId}`);
     
     return { success: true, message: 'Email sent successfully' };
 
   } catch (error) {
     console.error('Error sending confirmation email:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to send email');
+    console.error('Error details:', error.message);
+    throw new functions.https.HttpsError('internal', 'Failed to send email: ' + error.message);
   }
 });
 
@@ -138,7 +140,7 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
       const appointmentDate = appointment.appointmentDate.toDate();
 
       const mailOptions = {
-        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw@yahoo.com>',
+        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
         to: appointment.clientEmail,
         subject: 'Reminder: Appointment Tomorrow - Law Offices of Rozsa Gyene',
         html: `
@@ -165,7 +167,7 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
               <p style="margin: 5px 0;">Estate Planning & Probate</p>
-              <p style="margin: 5px 0;">Email: rozsagyenelaw@yahoo.com</p>
+              <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
             </div>
           </div>
         `
@@ -212,7 +214,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
       const appointmentDate = appointment.appointmentDate.toDate();
 
       const mailOptions = {
-        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw@yahoo.com>',
+        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
         to: appointment.clientEmail,
         subject: 'Reminder: Appointment in 1 Hour - Law Offices of Rozsa Gyene',
         html: `
@@ -236,7 +238,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
               <p style="margin: 5px 0;">Estate Planning & Probate</p>
-              <p style="margin: 5px 0;">Email: rozsagyenelaw@yahoo.com</p>
+              <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
             </div>
           </div>
         `
