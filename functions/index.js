@@ -115,7 +115,7 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
               Please log into your client portal at least 24 hours before your appointment.</p>
 
               <div style="text-align: center;">
-                <a href="https://portal.livingtrust-attorneys.com/appointments" class="button">View My Appointments</a>
+                <a href="https://portal.livingtrust-attorneys.com/appointments" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">View My Appointments</a>
               </div>
 
               <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
@@ -262,10 +262,10 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
               ` : ''}
 
               <div class="action-buttons">
-                <a href="https://console.firebase.google.com/project/law-firm-client-portal/firestore/data/~2Fappointments~2F${appointmentId}" class="button btn-primary">
+                <a href="https://console.firebase.google.com/project/law-firm-client-portal/firestore/data/~2Fappointments~2F${appointmentId}" style="display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none; border-radius: 4px; font-weight: bold; background-color: #064e3b; color: #ffffff;">
                   🔍 View in Firebase
                 </a>
-                <a href="mailto:${clientEmail}?subject=Re: Your Upcoming Appointment&body=Dear ${clientName},%0D%0A%0D%0AThank you for scheduling an appointment..." class="button btn-secondary">
+                <a href="mailto:${clientEmail}?subject=Re: Your Upcoming Appointment&body=Dear ${clientName},%0D%0A%0D%0AThank you for scheduling an appointment..." style="display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none; border-radius: 4px; font-weight: bold; background-color: #2563eb; color: #ffffff;">
                   ✉️ Email Client
                 </a>
               </div>
