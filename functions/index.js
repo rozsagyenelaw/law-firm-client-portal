@@ -20,7 +20,9 @@ const gmailTransporter = nodemailer.createTransport({
 });
 
 // Send appointment confirmation email to CLIENT
-exports.sendClientAppointmentConfirmation = functions.https.onCall(async (request) => {
+exports.sendClientAppointmentConfirmation = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+}, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
@@ -146,7 +148,9 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall(async (reques
 });
 
 // Send appointment notification email to ATTORNEY
-exports.sendAttorneyAppointmentNotification = functions.https.onCall(async (request) => {
+exports.sendAttorneyAppointmentNotification = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+}, async (request) => {
   if (!request.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
