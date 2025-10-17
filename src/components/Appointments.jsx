@@ -164,22 +164,39 @@ const Appointments = ({ userProfile }) => {
 
       const docRef = await addDoc(collection(db, 'appointments'), appointmentData);
 
-      // Call Firebase Function to send confirmation email
+      // Call Firebase Functions to send separate confirmation emails
       try {
-        const sendAppointmentEmail = httpsCallable(functions, 'sendAppointmentConfirmation');
-        await sendAppointmentEmail({
+        const appointmentDetails = {
           appointmentId: docRef.id,
           clientName: appointmentData.clientName,
           clientEmail: appointmentData.clientEmail,
+          clientPhone: appointmentData.clientPhone,
           appointmentDate: appointmentDate.toISOString(),
+          appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            timeZone: 'America/Los_Angeles'
+          }),
           appointmentTime: appointmentDate.toLocaleTimeString('en-US', { 
             hour: 'numeric', 
             minute: '2-digit',
-            hour12: true 
+            hour12: true,
+            timeZone: 'America/Los_Angeles'
           }),
           appointmentType: APPOINTMENT_TYPES.find(t => t.value === appointmentType)?.label,
           notes: notes || 'None'
-        });
+        };
+
+        // Send confirmation email to CLIENT
+        const sendClientConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
+        await sendClientConfirmation(appointmentDetails);
+
+        // Send notification email to ATTORNEY
+        const sendAttorneyNotification = httpsCallable(functions, 'sendAttorneyAppointmentNotification');
+        await sendAttorneyNotification(appointmentDetails);
+        
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
         // Don't fail the booking if email fails
@@ -189,7 +206,7 @@ const Appointments = ({ userProfile }) => {
       setShowBookingModal(false);
       setSelectedDate('');
       setSelectedTime('');
-      setAppointmentType('virtual');
+      setAppointmentType('phone');
       setNotes('');
       
       // Reload appointments
