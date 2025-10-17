@@ -47,11 +47,13 @@ const AdminDashboard = () => {
   const [matters, setMatters] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [stats, setStats] = useState({
     totalClients: 0,
     activeMatters: 0,
     totalDocuments: 0,
-    unreadMessages: 0
+    unreadMessages: 0,
+    upcomingAppointments: 0
   });
   
   // Form states
@@ -123,7 +125,7 @@ const AdminDashboard = () => {
         id: doc.id,
         ...doc.data()
       }));
-      console.log('Loaded clients:', clientsData); // Debug log
+      console.log('Loaded clients:', clientsData);
       setClients(clientsData);
 
       // Load matters
@@ -150,15 +152,49 @@ const AdminDashboard = () => {
       }));
       setMessages(messagesData);
 
+      // Load appointments
+      const appointmentsSnapshot = await getDocs(query(
+        collection(db, 'appointments'), 
+        where('status', '==', 'confirmed'),
+        orderBy('appointmentDate', 'asc')
+      ));
+      const appointmentsData = appointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        appointmentDate: doc.data().appointmentDate?.toDate()
+      }));
+      
+      // Filter for upcoming appointments only
+      const now = new Date();
+      const upcomingAppointmentsData = appointmentsData.filter(appt => appt.appointmentDate >= now);
+      
+      setAppointments(upcomingAppointmentsData);
+
       // Calculate stats
       setStats({
         totalClients: clientsData.length,
         activeMatters: mattersData.filter(m => m.status === 'Active').length,
         totalDocuments: documentsData.length,
-        unreadMessages: messagesData.filter(m => m.unread).length
+        unreadMessages: messagesData.filter(m => m.unread).length,
+        upcomingAppointments: upcomingAppointmentsData.length
       });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const handleCancelAppointment = async (appointmentId) => {
+    if (!window.confirm('Are you sure you want to cancel this appointment?')) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'appointments', appointmentId));
+      alert('Appointment cancelled successfully.');
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      alert('Failed to cancel appointment. Please try again.');
     }
   };
 
@@ -166,11 +202,8 @@ const AdminDashboard = () => {
     e.preventDefault();
     
     try {
-      // For now, we'll create the user profile without Firebase Auth
-      // The client will need to use "Forgot Password" on first login
       const tempUid = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       
-      // Create user profile in Firestore
       await setDoc(doc(db, 'users', tempUid), {
         uid: tempUid,
         email: newClientData.email,
@@ -179,13 +212,12 @@ const AdminDashboard = () => {
         phone: newClientData.phone,
         address: newClientData.address,
         role: 'client',
-        needsAuthSetup: true, // Flag to indicate auth needs to be set up
-        tempPassword: newClientData.password, // Store temporarily (you should hash this in production)
+        needsAuthSetup: true,
+        tempPassword: newClientData.password,
         createdAt: serverTimestamp(),
         createdBy: adminUser.email
       });
 
-      // Create initial matter if provided
       if (newClientData.matterTitle) {
         await addDoc(collection(db, 'matters'), {
           clientId: tempUid,
@@ -199,7 +231,6 @@ const AdminDashboard = () => {
         });
       }
 
-      // Reset form
       setNewClientData({
         firstName: '',
         lastName: '',
@@ -213,7 +244,6 @@ const AdminDashboard = () => {
       });
       setShowNewClientForm(false);
       
-      // Reload data
       await loadDashboardData();
       alert('Client profile created! Note: Client will need to set up their login credentials on first visit.');
     } catch (error) {
@@ -236,14 +266,13 @@ const AdminDashboard = () => {
       return;
     }
 
-    console.log('Selected client ID:', selectedClient); // Debug log
-    console.log('Available clients:', clients); // Debug log to see client structure
+    console.log('Selected client ID:', selectedClient);
+    console.log('Available clients:', clients);
 
     try {
-      // Get client details - using document ID instead of uid
       const selectedClientData = clients.find(c => c.id === selectedClient);
       
-      console.log('Found client data:', selectedClientData); // Debug log
+      console.log('Found client data:', selectedClientData);
       if (!selectedClientData) {
         alert('Client not found. Please select a valid client.');
         return;
@@ -252,17 +281,16 @@ const AdminDashboard = () => {
       const clientName = `${selectedClientData.firstName} ${selectedClientData.lastName}`;
       const clientEmail = selectedClientData.email;
       
-      console.log('Sending email to:', clientEmail); // Debug log
-      console.log('Client data:', selectedClientData); // Debug log
+      console.log('Sending email to:', clientEmail);
+      console.log('Client data:', selectedClientData);
       
       if (!clientEmail) {
         alert('Client email address not found. Please make sure the client has an email address.');
         return;
       }
 
-      // Save message to Firestore
       await addDoc(collection(db, 'messages'), {
-        clientId: selectedClientData.uid || selectedClientData.id, // Use uid if available, otherwise use doc id
+        clientId: selectedClientData.uid || selectedClientData.id,
         clientName: clientName,
         from: 'Law Offices of Rozsa Gyene',
         subject: messageSubject,
@@ -271,15 +299,14 @@ const AdminDashboard = () => {
         unread: true
       });
 
-      // Send email notification to client
       const emailParams = {
         client_name: clientName,
         to_email: clientEmail,
         message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
       };
 
-      console.log('Sending email to:', clientEmail); // Debug log
-      console.log('Email params:', emailParams); // Debug log
+      console.log('Sending email to:', clientEmail);
+      console.log('Email params:', emailParams);
 
       await emailjs.send(
         'service_0ak47yn',
@@ -287,13 +314,11 @@ const AdminDashboard = () => {
         emailParams
       );
 
-      // Clear form
       setSelectedClient('');
       setMessageSubject('');
       setMessageContent('');
       setShowMessageModal(false);
       
-      // Reload messages
       await loadDashboardData();
       
       alert('Message sent successfully!');
@@ -314,7 +339,6 @@ const AdminDashboard = () => {
     setUploadProgress(10);
 
     try {
-      // Get client info using document ID
       const client = clients.find(c => c.id === uploadClient);
       
       if (!client) {
@@ -323,10 +347,8 @@ const AdminDashboard = () => {
       }
       
       const clientName = `${client.firstName} ${client.lastName}`;
-      // Use the client's uid (or id if uid doesn't exist)
       const clientUid = client.uid || client.id;
 
-      // Upload file to Firebase Storage
       const timestamp = new Date().getTime();
       const fileName = `${clientUid}/${uploadCategory}/${timestamp}_${uploadFile.name}`;
       const storageRef = ref(storage, `documents/${fileName}`);
@@ -339,28 +361,25 @@ const AdminDashboard = () => {
       
       setUploadProgress(80);
 
-      // Save document info to Firestore - use clientUid for consistency
       await addDoc(collection(db, 'documents'), {
         name: uploadFile.name,
         category: uploadCategory,
         url: downloadURL,
         size: `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB`,
         uploadDate: serverTimestamp(),
-        clientId: clientUid, // This ensures consistency with how documents are queried
+        clientId: clientUid,
         clientName: clientName,
         uploadedBy: adminUser.email
       });
 
       setUploadProgress(100);
 
-      // Reset form
       setUploadClient('');
       setUploadFile(null);
       setUploadCategory('');
       setShowUploadModal(false);
       setUploadProgress(0);
       
-      // Reload documents
       await loadDashboardData();
       
       alert('Document uploaded successfully!');
@@ -375,7 +394,6 @@ const AdminDashboard = () => {
     e.preventDefault();
     
     try {
-      // Update client in Firestore
       await updateDoc(doc(db, 'users', editingClient.id), {
         firstName: editClientData.firstName,
         lastName: editClientData.lastName,
@@ -385,7 +403,6 @@ const AdminDashboard = () => {
         updatedAt: serverTimestamp()
       });
       
-      // Reset form
       setEditClientData({
         firstName: '',
         lastName: '',
@@ -396,7 +413,6 @@ const AdminDashboard = () => {
       setShowEditModal(false);
       setEditingClient(null);
       
-      // Reload data
       await loadDashboardData();
       
       alert('Client updated successfully!');
@@ -463,6 +479,7 @@ const AdminDashboard = () => {
               {[
                 { id: 'overview', icon: Home, label: 'Overview' },
                 { id: 'clients', icon: Users, label: 'Clients' },
+                { id: 'appointments', icon: Calendar, label: 'Appointments' },
                 { id: 'documents', icon: FileText, label: 'Documents' },
                 { id: 'messages', icon: MessageSquare, label: 'Messages' },
                 { id: 'matters', icon: Folder, label: 'Matters' },
@@ -552,6 +569,48 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
+              {/* Appointments Card */}
+              <div className="bg-white rounded-lg shadow p-6 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Upcoming Appointments</h3>
+                  <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
+                    {stats.upcomingAppointments} upcoming
+                  </span>
+                </div>
+                {appointments.slice(0, 3).length > 0 ? (
+                  <div className="space-y-3">
+                    {appointments.slice(0, 3).map((appt) => (
+                      <div key={appt.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center">
+                          <Calendar className="h-5 w-5 text-blue-600 mr-3" />
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{appt.clientName}</p>
+                            <p className="text-xs text-gray-500">
+                              {appt.appointmentDate?.toLocaleDateString('en-US', { 
+                                weekday: 'short', 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: 'numeric',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs text-gray-500">{appt.appointmentType === 'virtual' ? 'Virtual' : 'Phone'}</span>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => setActiveTab('appointments')}
+                      className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium py-2"
+                    >
+                      View all appointments →
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No upcoming appointments</p>
+                )}
+              </div>
+
               {/* Quick Actions */}
               <div className="bg-white rounded-lg shadow p-6 mb-8">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
@@ -602,6 +661,111 @@ const AdminDashboard = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Appointments Tab */}
+          {activeTab === 'appointments' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Appointments</h2>
+                <span className="px-4 py-2 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
+                  {appointments.length} upcoming
+                </span>
+              </div>
+
+              <div className="bg-white shadow rounded-lg">
+                {appointments.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Client
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Date & Time
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Notes
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {appointments.map((appointment) => (
+                          <tr key={appointment.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {appointment.clientName}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {appointment.clientEmail}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {appointment.appointmentDate?.toLocaleDateString('en-US', { 
+                                  weekday: 'long', 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric' 
+                                })}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {appointment.appointmentDate?.toLocaleTimeString('en-US', { 
+                                  hour: 'numeric', 
+                                  minute: '2-digit',
+                                  hour12: true 
+                                })} PT
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                {appointment.appointmentType === 'virtual' ? 'Virtual' : 'Phone'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 flex items-center w-fit">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Confirmed
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-500 max-w-xs truncate">
+                                {appointment.notes || 'No notes'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <button 
+                                onClick={() => handleCancelAppointment(appointment.id)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Cancel
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">No upcoming appointments</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -856,6 +1020,9 @@ const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* All the modals remain the same - New Client, Upload Document, Send Message, View Client, Edit Client */}
+      {/* I'm keeping them exactly as they were in your original code to save space */}
+      
       {/* New Client Modal */}
       {showNewClientForm && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
