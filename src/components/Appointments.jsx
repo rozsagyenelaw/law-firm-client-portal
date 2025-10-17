@@ -16,6 +16,11 @@ const Appointments = ({ userProfile }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Guest booking fields (when not logged in)
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
 
   const APPOINTMENT_TYPES = [
     { value: 'virtual', label: 'Virtual Consultation', icon: Video },
@@ -34,10 +39,14 @@ const Appointments = ({ userProfile }) => {
   };
 
   const APPOINTMENT_DURATION = 30; // minutes
+  
+  const isLoggedIn = auth.currentUser !== null;
 
   useEffect(() => {
     if (auth.currentUser) {
       loadAppointments();
+    } else {
+      setLoading(false);
     }
   }, []);
 
@@ -138,6 +147,13 @@ const Appointments = ({ userProfile }) => {
     setSuccessMessage('');
 
     try {
+      // Get client info - either from auth or guest fields
+      const clientName = isLoggedIn 
+        ? (userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : auth.currentUser.email)
+        : guestName;
+      const clientEmail = isLoggedIn ? auth.currentUser.email : guestEmail;
+      const clientPhone = isLoggedIn ? (userProfile?.phone || '') : guestPhone;
+      
       // Create appointment date object in Pacific Time
       const [hours, minutes] = selectedTime.split(':');
       
@@ -147,15 +163,16 @@ const Appointments = ({ userProfile }) => {
 
       // Create appointment document
       const appointmentData = {
-        clientId: auth.currentUser.uid,
-        clientName: userProfile ? `${userProfile.firstName} ${userProfile.lastName}` : auth.currentUser.email,
-        clientEmail: auth.currentUser.email,
-        clientPhone: userProfile?.phone || '',
+        clientId: isLoggedIn ? auth.currentUser.uid : 'guest',
+        clientName: clientName,
+        clientEmail: clientEmail,
+        clientPhone: clientPhone,
         appointmentDate: appointmentDate,
         appointmentType: appointmentType,
         notes: notes,
         status: 'confirmed',
         createdAt: serverTimestamp(),
+        isGuestBooking: !isLoggedIn,
         remindersSent: {
           '24hours': false,
           '1hour': false
@@ -164,13 +181,13 @@ const Appointments = ({ userProfile }) => {
 
       const docRef = await addDoc(collection(db, 'appointments'), appointmentData);
 
-      // Call Firebase Functions to send separate confirmation emails
+      // Send confirmation emails - BLUE email to both client and attorney
       try {
         const appointmentDetails = {
           appointmentId: docRef.id,
-          clientName: appointmentData.clientName,
-          clientEmail: appointmentData.clientEmail,
-          clientPhone: appointmentData.clientPhone,
+          clientName: clientName,
+          clientEmail: clientEmail,
+          clientPhone: clientPhone,
           appointmentDate: appointmentDate.toISOString(),
           appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
             weekday: 'long', 
@@ -189,13 +206,16 @@ const Appointments = ({ userProfile }) => {
           notes: notes || 'None'
         };
 
-        // Send confirmation email to CLIENT
+        // Send BLUE confirmation email to CLIENT
         const sendClientConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
         await sendClientConfirmation(appointmentDetails);
 
-        // Send notification email to ATTORNEY
-        const sendAttorneyNotification = httpsCallable(functions, 'sendAttorneyAppointmentNotification');
-        await sendAttorneyNotification(appointmentDetails);
+        // Send same BLUE confirmation email to ATTORNEY
+        const sendAttorneyConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
+        await sendAttorneyConfirmation({
+          ...appointmentDetails,
+          clientEmail: 'rozsagyenelaw1@gmail.com' // Override to send to attorney
+        });
         
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
@@ -208,9 +228,14 @@ const Appointments = ({ userProfile }) => {
       setSelectedTime('');
       setAppointmentType('phone');
       setNotes('');
+      setGuestName('');
+      setGuestEmail('');
+      setGuestPhone('');
       
-      // Reload appointments
-      await loadAppointments();
+      // Reload appointments if logged in
+      if (isLoggedIn) {
+        await loadAppointments();
+      }
 
       // Clear success message after 5 seconds
       setTimeout(() => {
@@ -312,92 +337,94 @@ const Appointments = ({ userProfile }) => {
           </div>
           <div className="flex items-center">
             <Video className="h-4 w-4 mr-2" />
-            <span>Virtual or in-person meetings available</span>
+            <span>Virtual or phone consultations available</span>
           </div>
         </div>
       </div>
 
-      {/* Upcoming Appointments */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Your Appointments</h3>
-        </div>
-        <div className="p-6">
-          {appointments.length > 0 ? (
-            <div className="space-y-4">
-              {appointments.map((appointment) => (
-                <div key={appointment.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center mb-2">
-                        {appointment.appointmentType === 'virtual' ? (
-                          <Video className="h-5 w-5 text-green-600 mr-2" />
-                        ) : (
-                          <MapPin className="h-5 w-5 text-blue-600 mr-2" />
-                        )}
-                        <h4 className="text-sm font-medium text-gray-900">
-                          {APPOINTMENT_TYPES.find(t => t.value === appointment.appointmentType)?.label}
-                        </h4>
-                      </div>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2" />
-                          <span>
-                            {appointment.appointmentDate.toLocaleDateString('en-US', { 
-                              weekday: 'long', 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric' 
-                            })}
-                          </span>
+      {/* Upcoming Appointments - Only show if logged in */}
+      {isLoggedIn && (
+        <div className="bg-white shadow rounded-lg">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Your Appointments</h3>
+          </div>
+          <div className="p-6">
+            {appointments.length > 0 ? (
+              <div className="space-y-4">
+                {appointments.map((appointment) => (
+                  <div key={appointment.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center mb-2">
+                          {appointment.appointmentType === 'virtual' ? (
+                            <Video className="h-5 w-5 text-green-600 mr-2" />
+                          ) : (
+                            <MapPin className="h-5 w-5 text-blue-600 mr-2" />
+                          )}
+                          <h4 className="text-sm font-medium text-gray-900">
+                            {APPOINTMENT_TYPES.find(t => t.value === appointment.appointmentType)?.label}
+                          </h4>
                         </div>
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 mr-2" />
-                          <span>
-                            {appointment.appointmentDate.toLocaleTimeString('en-US', { 
-                              hour: 'numeric', 
-                              minute: '2-digit',
-                              hour12: true 
-                            })} (Pacific Time)
-                          </span>
+                        <div className="space-y-1 text-sm text-gray-600">
+                          <div className="flex items-center">
+                            <Calendar className="h-4 w-4 mr-2" />
+                            <span>
+                              {appointment.appointmentDate.toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                year: 'numeric', 
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 mr-2" />
+                            <span>
+                              {appointment.appointmentDate.toLocaleTimeString('en-US', { 
+                                hour: 'numeric', 
+                                minute: '2-digit',
+                                hour12: true 
+                              })} (Pacific Time)
+                            </span>
+                          </div>
+                          {appointment.notes && (
+                            <p className="mt-2 text-gray-700">
+                              <strong>Notes:</strong> {appointment.notes}
+                            </p>
+                          )}
                         </div>
-                        {appointment.notes && (
-                          <p className="mt-2 text-gray-700">
-                            <strong>Notes:</strong> {appointment.notes}
-                          </p>
-                        )}
                       </div>
-                    </div>
-                    <div className="ml-4 flex flex-col items-end space-y-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Confirmed
-                      </span>
-                      <button
-                        onClick={() => handleCancelAppointment(appointment.id)}
-                        className="text-sm text-red-600 hover:text-red-800"
-                      >
-                        Cancel
-                      </button>
+                      <div className="ml-4 flex flex-col items-end space-y-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Confirmed
+                        </span>
+                        <button
+                          onClick={() => handleCancelAppointment(appointment.id)}
+                          className="text-sm text-red-600 hover:text-red-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No upcoming appointments</p>
-              <button
-                onClick={() => setShowBookingModal(true)}
-                className="mt-4 text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Book your first appointment
-              </button>
-            </div>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No upcoming appointments</p>
+                <button
+                  onClick={() => setShowBookingModal(true)}
+                  className="mt-4 text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Book your first appointment
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Booking Modal */}
       {showBookingModal && (
@@ -414,6 +441,55 @@ const Appointments = ({ userProfile }) => {
             </div>
 
             <form onSubmit={handleBookAppointment} className="p-6 space-y-6">
+              {/* Guest Information - Only show if not logged in */}
+              {!isLoggedIn && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
+                  <h4 className="font-medium text-blue-900">Your Information</h4>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      required
+                      placeholder="John Smith"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      value={guestEmail}
+                      onChange={(e) => setGuestEmail(e.target.value)}
+                      required
+                      placeholder="john@example.com"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      value={guestPhone}
+                      onChange={(e) => setGuestPhone(e.target.value)}
+                      required
+                      placeholder="(555) 123-4567"
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Appointment Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
