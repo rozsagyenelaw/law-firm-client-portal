@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, FileText, MessageSquare, Upload, Search, 
-  Plus, Edit, Trash2, Send, Calendar, DollarSign,
+  Plus, Edit, Trash2, Send, Calendar as CalendarIcon, DollarSign,
   Home, LogOut, Settings, Eye, Download, Shield,
-  CheckCircle, AlertCircle, Clock, Menu, X, Folder
+  CheckCircle, AlertCircle, Clock, Menu, X, Folder,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { Calendar as BigCalendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword, 
@@ -36,11 +40,18 @@ import emailjs from '@emailjs/browser';
 // Initialize EmailJS
 emailjs.init('tlwGhvG0aPvocwYcO');
 
+// Initialize moment localizer for calendar
+const localizer = momentLocalizer(moment);
+
 const AdminDashboard = () => {
   const [adminUser, setAdminUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Calendar view states
+  const [calendarView, setCalendarView] = useState('month');
+  const [calendarDate, setCalendarDate] = useState(new Date());
   
   // Data states
   const [clients, setClients] = useState([]);
@@ -48,6 +59,7 @@ const AdminDashboard = () => {
   const [documents, setDocuments] = useState([]);
   const [messages, setMessages] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [allAppointments, setAllAppointments] = useState([]); // All appointments for calendar
   const [stats, setStats] = useState({
     totalClients: 0,
     activeMatters: 0,
@@ -61,6 +73,7 @@ const AdminDashboard = () => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
   
   // New client form data
   const [newClientData, setNewClientData] = useState({
@@ -152,7 +165,16 @@ const AdminDashboard = () => {
       }));
       setMessages(messagesData);
 
-      // Load appointments
+      // Load ALL appointments for calendar view
+      const allAppointmentsSnapshot = await getDocs(collection(db, 'appointments'));
+      const allAppointmentsData = allAppointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        appointmentDate: doc.data().appointmentDate?.toDate()
+      }));
+      setAllAppointments(allAppointmentsData);
+
+      // Load confirmed upcoming appointments for stats and list view
       const appointmentsSnapshot = await getDocs(query(
         collection(db, 'appointments'), 
         where('status', '==', 'confirmed'),
@@ -197,6 +219,97 @@ const AdminDashboard = () => {
       alert('Failed to cancel appointment. Please try again.');
     }
   };
+
+  // Convert appointments to calendar events format
+  const calendarEvents = allAppointments.map(appointment => ({
+    id: appointment.id,
+    title: `${appointment.clientName} - ${appointment.appointmentType === 'virtual' ? 'Virtual' : 'Phone'}`,
+    start: appointment.appointmentDate,
+    end: new Date(appointment.appointmentDate.getTime() + 60 * 60 * 1000), // 1 hour duration
+    resource: appointment
+  }));
+
+  const eventStyleGetter = (event) => {
+    const appointment = event.resource;
+    let backgroundColor = '#3B82F6'; // Default blue
+    
+    switch(appointment.status) {
+      case 'confirmed':
+        backgroundColor = '#10B981'; // Green
+        break;
+      case 'pending':
+        backgroundColor = '#F59E0B'; // Orange
+        break;
+      case 'cancelled':
+        backgroundColor = '#EF4444'; // Red
+        break;
+      default:
+        backgroundColor = '#6B7280'; // Gray
+    }
+
+    return {
+      style: {
+        backgroundColor,
+        borderRadius: '4px',
+        opacity: 0.9,
+        color: 'white',
+        border: 'none',
+        display: 'block'
+      }
+    };
+  };
+
+  const handleSelectCalendarEvent = (event) => {
+    setSelectedCalendarEvent(event.resource);
+  };
+
+  const CustomToolbar = ({ label, onNavigate, onView }) => (
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center',
+      marginBottom: '20px',
+      flexWrap: 'wrap',
+      gap: '10px'
+    }}>
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button 
+          onClick={() => onNavigate('PREV')}
+          className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <button 
+          onClick={() => onNavigate('TODAY')}
+          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          Today
+        </button>
+        <button 
+          onClick={() => onNavigate('NEXT')}
+          className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+      <h2 className="text-xl font-semibold">{label}</h2>
+      <div style={{ display: 'flex', gap: '5px' }}>
+        {['month', 'week', 'day'].map((view) => (
+          <button
+            key={view}
+            onClick={() => { setCalendarView(view); onView(view); }}
+            className={`px-4 py-2 rounded-md ${
+              calendarView === view 
+                ? 'bg-blue-900 text-white' 
+                : 'border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {view.charAt(0).toUpperCase() + view.slice(1)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   const handleCreateClient = async (e) => {
     e.preventDefault();
@@ -479,7 +592,8 @@ const AdminDashboard = () => {
               {[
                 { id: 'overview', icon: Home, label: 'Overview' },
                 { id: 'clients', icon: Users, label: 'Clients' },
-                { id: 'appointments', icon: Calendar, label: 'Appointments' },
+                { id: 'calendar', icon: CalendarIcon, label: 'Calendar' },
+                { id: 'appointments', icon: Clock, label: 'Appointments List' },
                 { id: 'documents', icon: FileText, label: 'Documents' },
                 { id: 'messages', icon: MessageSquare, label: 'Messages' },
                 { id: 'matters', icon: Folder, label: 'Matters' },
@@ -521,6 +635,53 @@ const AdminDashboard = () => {
       {/* Main content */}
       <div className="lg:ml-64">
         <div className="p-4 sm:p-6 lg:p-8">
+          {/* Calendar Tab - NEW! */}
+          {activeTab === 'calendar' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Calendar</h2>
+                  <p className="text-sm text-gray-600 mt-1">View and manage all appointments</p>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="flex space-x-2">
+                    <div className="flex items-center">
+                      <span className="w-3 h-3 rounded-full bg-green-500 mr-1"></span>
+                      <span className="text-xs text-gray-600">Confirmed</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="w-3 h-3 rounded-full bg-orange-500 mr-1"></span>
+                      <span className="text-xs text-gray-600">Pending</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="w-3 h-3 rounded-full bg-red-500 mr-1"></span>
+                      <span className="text-xs text-gray-600">Cancelled</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <BigCalendar
+                  localizer={localizer}
+                  events={calendarEvents}
+                  startAccessor="start"
+                  endAccessor="end"
+                  style={{ height: 700 }}
+                  onSelectEvent={handleSelectCalendarEvent}
+                  view={calendarView}
+                  date={calendarDate}
+                  onView={setCalendarView}
+                  onNavigate={setCalendarDate}
+                  eventPropGetter={eventStyleGetter}
+                  components={{
+                    toolbar: CustomToolbar
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div>
@@ -582,7 +743,7 @@ const AdminDashboard = () => {
                     {appointments.slice(0, 3).map((appt) => (
                       <div key={appt.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center">
-                          <Calendar className="h-5 w-5 text-blue-600 mr-3" />
+                          <CalendarIcon className="h-5 w-5 text-blue-600 mr-3" />
                           <div>
                             <p className="text-sm font-medium text-gray-900">{appt.clientName}</p>
                             <p className="text-xs text-gray-500">
@@ -600,10 +761,10 @@ const AdminDashboard = () => {
                       </div>
                     ))}
                     <button
-                      onClick={() => setActiveTab('appointments')}
+                      onClick={() => setActiveTab('calendar')}
                       className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium py-2"
                     >
-                      View all appointments →
+                      View calendar →
                     </button>
                   </div>
                 ) : (
@@ -669,7 +830,7 @@ const AdminDashboard = () => {
           {activeTab === 'appointments' && (
             <div>
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Appointments</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Appointments List</h2>
                 <span className="px-4 py-2 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
                   {appointments.length} upcoming
                 </span>
@@ -762,7 +923,7 @@ const AdminDashboard = () => {
                   </div>
                 ) : (
                   <div className="text-center py-12">
-                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <CalendarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-500">No upcoming appointments</p>
                   </div>
                 )}
@@ -1020,8 +1181,97 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* All the modals remain the same - New Client, Upload Document, Send Message, View Client, Edit Client */}
-      {/* I'm keeping them exactly as they were in your original code to save space */}
+      {/* Event Details Modal */}
+      {selectedCalendarEvent && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Appointment Details</h3>
+              <button
+                onClick={() => setSelectedCalendarEvent(null)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Client</label>
+                <p className="mt-1 text-sm text-gray-900">{selectedCalendarEvent.clientName}</p>
+                <p className="mt-1 text-sm text-gray-500">{selectedCalendarEvent.clientEmail}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Date & Time</label>
+                <p className="mt-1 text-sm text-gray-900">
+                  {selectedCalendarEvent.appointmentDate?.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {selectedCalendarEvent.appointmentDate?.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit',
+                    hour12: true 
+                  })} PT
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Type</label>
+                <span className="mt-1 inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                  {selectedCalendarEvent.appointmentType === 'virtual' ? 'Virtual Meeting' : 'Phone Call'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <span className={`mt-1 inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                  selectedCalendarEvent.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                  selectedCalendarEvent.status === 'pending' ? 'bg-orange-100 text-orange-800' :
+                  'bg-red-100 text-red-800'
+                }`}>
+                  {selectedCalendarEvent.status.charAt(0).toUpperCase() + selectedCalendarEvent.status.slice(1)}
+                </span>
+              </div>
+
+              {selectedCalendarEvent.notes && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Notes</label>
+                  <p className="mt-1 text-sm text-gray-500">{selectedCalendarEvent.notes}</p>
+                </div>
+              )}
+
+              <div className="pt-4 flex space-x-3">
+                {selectedCalendarEvent.status === 'confirmed' && (
+                  <button
+                    onClick={() => {
+                      handleCancelAppointment(selectedCalendarEvent.id);
+                      setSelectedCalendarEvent(null);
+                    }}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  >
+                    Cancel Appointment
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedCalendarEvent(null)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* All existing modals remain the same - New Client, Upload Document, Send Message, View Client, Edit Client */}
+      {/* I'll keep the rest of your modals exactly as they were */}
       
       {/* New Client Modal */}
       {showNewClientForm && (
