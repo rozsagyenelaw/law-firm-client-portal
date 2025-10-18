@@ -53,6 +53,12 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
   } = request.data;
 
   try {
+    console.log('===== CLIENT CONFIRMATION EMAIL =====');
+    console.log('Sending TO:', clientEmail);
+    console.log('Client Name:', clientName);
+    console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
+    console.log('Appointment ID:', appointmentId);
+    
     // Client-focused confirmation email
     const clientMailOptions = {
       from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
@@ -74,6 +80,8 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
             .button { display: inline-block; background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; }
             .footer { text-align: center; padding: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; margin-top: 20px; }
             .checklist { background-color: #eff6ff; padding: 15px; border-radius: 8px; border-left: 4px solid #1e3a8a; margin: 20px 0; }
+            .contact-box { background-color: #fef3c7; border: 2px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .contact-highlight { font-size: 16px; font-weight: bold; color: #1e3a8a; }
           </style>
         </head>
         <body>
@@ -85,6 +93,13 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
               <h2 style="color: #1e3a8a;">Dear ${clientName},</h2>
               <p>Thank you for scheduling your consultation with Law Offices of Rozsa Gyene. Your appointment has been confirmed!</p>
               
+              <div class="contact-box">
+                <h3 style="color: #92400e; margin-top: 0; margin-bottom: 10px;">📞 Your Contact Information</h3>
+                <p style="margin: 5px 0;"><strong>Name:</strong> <span class="contact-highlight">${clientName}</span></p>
+                <p style="margin: 5px 0;"><strong>Email:</strong> <span class="contact-highlight">${clientEmail}</span></p>
+                <p style="margin: 5px 0;"><strong>Phone:</strong> <span class="contact-highlight">${clientPhone || 'Not provided'}</span></p>
+              </div>
+
               <div class="appointment-details">
                 <h3 style="color: #1e3a8a; margin-top: 0;">Appointment Details</h3>
                 <div class="detail-row">
@@ -149,7 +164,9 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
     };
 
     await gmailTransporter.sendMail(clientMailOptions);
-    console.log(`✓ Client confirmation email sent to ${clientEmail} for appointment ${appointmentId}`);
+    console.log(`✓ CLIENT CONFIRMATION EMAIL sent successfully`);
+    console.log(`  --> Sent to: ${clientEmail}`);
+    console.log(`  --> Appointment ID: ${appointmentId}`);
     
     return { success: true, message: 'Client confirmation email sent successfully' };
 
@@ -185,12 +202,12 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
   } = request.data;
 
   // Log the received data for debugging
-  console.log('Attorney notification data:', {
-    clientName,
-    clientEmail,
-    clientPhone: clientPhone || 'NOT PROVIDED',
-    appointmentId
-  });
+  console.log('===== ATTORNEY NOTIFICATION EMAIL =====');
+  console.log('Sending TO: rozsagyenelaw1@gmail.com (ATTORNEY)');
+  console.log('Client Name:', clientName);
+  console.log('Client Email:', clientEmail);
+  console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
+  console.log('Appointment ID:', appointmentId);
 
   try {
     // Attorney-focused notification email with all client details
@@ -344,8 +361,11 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
     };
 
     await gmailTransporter.sendMail(attorneyMailOptions);
-    console.log(`✓ Attorney notification email sent to rozsagyenelaw1@gmail.com for appointment ${appointmentId}`);
-    console.log(`   Client: ${clientName}, Email: ${clientEmail}, Phone: ${clientPhone || 'NOT PROVIDED'}`);
+    console.log(`✓ ATTORNEY NOTIFICATION EMAIL sent successfully`);
+    console.log(`  --> Sent to: rozsagyenelaw1@gmail.com (ATTORNEY)`);
+    console.log(`  --> Client: ${clientName} (${clientEmail})`);
+    console.log(`  --> Client Phone: ${clientPhone || 'NOT PROVIDED'}`);
+    console.log(`  --> Appointment ID: ${appointmentId}`);
     
     return { success: true, message: 'Attorney notification email sent successfully' };
 
