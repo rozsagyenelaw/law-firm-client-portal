@@ -377,146 +377,223 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
 });
 
 // Send 24-hour reminder emails - runs every hour
+// UPDATED VERSION - No Firestore index required
 exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', async (event) => {
+  console.log('===== 24-HOUR REMINDER CHECK STARTED =====');
+  console.log('Current time:', new Date().toISOString());
+  
   try {
     const now = new Date();
     const tomorrow = new Date(now.getTime() + (24 * 60 * 60 * 1000));
     const tomorrowStart = new Date(tomorrow.setHours(0, 0, 0, 0));
     const tomorrowEnd = new Date(tomorrow.setHours(23, 59, 59, 999));
 
+    console.log('Looking for appointments between:');
+    console.log('  Start:', tomorrowStart.toISOString());
+    console.log('  End:', tomorrowEnd.toISOString());
+
+    // SIMPLIFIED QUERY - Only filter by date range (no index needed)
     const appointmentsSnapshot = await db.collection('appointments')
       .where('appointmentDate', '>=', tomorrowStart)
       .where('appointmentDate', '<=', tomorrowEnd)
-      .where('status', '==', 'confirmed')
-      .where('remindersSent.24hours', '==', false)
       .get();
+
+    console.log(`Found ${appointmentsSnapshot.size} appointments in tomorrow's date range`);
 
     const batch = db.batch();
     const emailPromises = [];
+    let sentCount = 0;
+    let skippedCount = 0;
 
     appointmentsSnapshot.forEach(doc => {
       const appointment = doc.data();
-      const appointmentDate = appointment.appointmentDate.toDate();
+      
+      // Filter by status and reminder flag IN CODE (not in query)
+      if (appointment.status === 'confirmed' && 
+          appointment.remindersSent?.['24hours'] !== true) {
+        
+        const appointmentDate = appointment.appointmentDate.toDate();
 
-      const mailOptions = {
-        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
-        to: appointment.clientEmail,
-        subject: 'Reminder: Appointment Tomorrow - Law Offices of Rozsa Gyene',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1e3a8a;">Appointment Reminder</h2>
-            
-            <p>Dear ${appointment.clientName},</p>
-            
-            <p>This is a friendly reminder about your appointment tomorrow:</p>
-            
-            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #1e3a8a;">Appointment Details:</h3>
-              <ul style="list-style: none; padding: 0;">
-                <li style="margin: 10px 0;"><strong>Date:</strong> ${appointmentDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</li>
-                <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
-                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'Over the Phone'}</li>
-              </ul>
+        console.log(`\nSending 24-hour reminder:`);
+        console.log('  - Client:', appointment.clientName);
+        console.log('  - Email:', appointment.clientEmail);
+        console.log('  - Date:', appointmentDate.toISOString());
+
+        const mailOptions = {
+          from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+          to: appointment.clientEmail,
+          subject: 'Reminder: Appointment Tomorrow - Law Offices of Rozsa Gyene',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1e3a8a;">Appointment Reminder</h2>
+              
+              <p>Dear ${appointment.clientName},</p>
+              
+              <p>This is a friendly reminder about your appointment tomorrow:</p>
+              
+              <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #1e3a8a;">Appointment Details:</h3>
+                <ul style="list-style: none; padding: 0;">
+                  <li style="margin: 10px 0;"><strong>Date:</strong> ${appointmentDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</li>
+                  <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
+                  <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType}</li>
+                </ul>
+              </div>
+              
+              <p>Please be ready 5 minutes early. If you need to cancel or reschedule, please contact us as soon as possible.</p>
+              
+              <p>Contact: <a href="mailto:rozsagyenelaw1@gmail.com">rozsagyenelaw1@gmail.com</a></p>
+              
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
+                <p style="margin: 5px 0;">Estate Planning & Probate</p>
+                <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
+              </div>
             </div>
-            
-            <p>Please be ready 5 minutes early. If you need to cancel or reschedule, please contact us as soon as possible.</p>
-            
-            <p>Contact: <a href="mailto:rozsagyenelaw1@gmail.com">rozsagyenelaw1@gmail.com</a></p>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
-              <p style="margin: 5px 0;">Estate Planning & Probate</p>
-              <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
-            </div>
-          </div>
-        `
-      };
+          `
+        };
 
-      emailPromises.push(gmailTransporter.sendMail(mailOptions));
+        emailPromises.push(
+          gmailTransporter.sendMail(mailOptions)
+            .then(() => console.log(`  ✓ Email sent to ${appointment.clientEmail}`))
+            .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
+        );
 
-      batch.update(doc.ref, {
-        'remindersSent.24hours': true,
-        'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
-      });
+        batch.update(doc.ref, {
+          'remindersSent.24hours': true,
+          'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        sentCount++;
+      } else {
+        skippedCount++;
+        console.log(`Skipping appointment ${doc.id}:`);
+        console.log(`  - Status: ${appointment.status}`);
+        console.log(`  - 24hr reminder already sent: ${appointment.remindersSent?.['24hours']}`);
+      }
     });
 
     await Promise.all(emailPromises);
     await batch.commit();
     
-    console.log(`Sent ${appointmentsSnapshot.size} 24-hour reminders`);
+    console.log(`\n===== SUMMARY =====`);
+    console.log(`Total appointments found: ${appointmentsSnapshot.size}`);
+    console.log(`Reminders sent: ${sentCount}`);
+    console.log(`Skipped: ${skippedCount}`);
+    console.log(`✓ 24-hour reminder check completed successfully`);
 
   } catch (error) {
-    console.error('Error sending 24-hour reminders:', error);
+    console.error('ERROR in 24-hour reminders:', error);
+    console.error('Error stack:', error.stack);
   }
+  
+  console.log('===== 24-HOUR REMINDER CHECK COMPLETED =====\n');
 });
 
 // Send 1-hour reminder emails - runs every 15 minutes
+// UPDATED VERSION - No Firestore index required
 exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', async (event) => {
+  console.log('===== 1-HOUR REMINDER CHECK STARTED =====');
+  console.log('Current time:', new Date().toISOString());
+  
   try {
     const now = new Date();
     const oneHourFromNow = new Date(now.getTime() + (60 * 60 * 1000));
     const rangeStart = new Date(oneHourFromNow.getTime() - (15 * 60 * 1000));
     const rangeEnd = new Date(oneHourFromNow.getTime() + (15 * 60 * 1000));
 
+    console.log('Looking for appointments between:');
+    console.log('  Start:', rangeStart.toISOString());
+    console.log('  End:', rangeEnd.toISOString());
+
+    // SIMPLIFIED QUERY - Only filter by date range (no index needed)
     const appointmentsSnapshot = await db.collection('appointments')
       .where('appointmentDate', '>=', rangeStart)
       .where('appointmentDate', '<=', rangeEnd)
-      .where('status', '==', 'confirmed')
-      .where('remindersSent.1hour', '==', false)
       .get();
+
+    console.log(`Found ${appointmentsSnapshot.size} appointments in 1-hour window`);
 
     const batch = db.batch();
     const emailPromises = [];
+    let sentCount = 0;
+    let skippedCount = 0;
 
     appointmentsSnapshot.forEach(doc => {
       const appointment = doc.data();
-      const appointmentDate = appointment.appointmentDate.toDate();
+      
+      // Filter by status and reminder flag IN CODE (not in query)
+      if (appointment.status === 'confirmed' && 
+          appointment.remindersSent?.['1hour'] !== true) {
+        
+        const appointmentDate = appointment.appointmentDate.toDate();
 
-      const mailOptions = {
-        from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
-        to: appointment.clientEmail,
-        subject: 'Reminder: Appointment in 1 Hour - Law Offices of Rozsa Gyene',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1e3a8a;">Appointment Starting Soon!</h2>
-            
-            <p>Dear ${appointment.clientName},</p>
-            
-            <p>Your appointment is in 1 hour!</p>
-            
-            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #1e3a8a;">Appointment Details:</h3>
-              <ul style="list-style: none; padding: 0;">
-                <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
-                <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'Over the Phone'}</li>
-              </ul>
+        console.log(`\nSending 1-hour reminder:`);
+        console.log('  - Client:', appointment.clientName);
+        console.log('  - Email:', appointment.clientEmail);
+        console.log('  - Date:', appointmentDate.toISOString());
+
+        const mailOptions = {
+          from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+          to: appointment.clientEmail,
+          subject: 'Reminder: Appointment in 1 Hour - Law Offices of Rozsa Gyene',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1e3a8a;">Appointment Starting Soon!</h2>
+              
+              <p>Dear ${appointment.clientName},</p>
+              
+              <p>Your appointment is in 1 hour!</p>
+              
+              <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #1e3a8a;">Appointment Details:</h3>
+                <ul style="list-style: none; padding: 0;">
+                  <li style="margin: 10px 0;"><strong>Time:</strong> ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} (Pacific Time)</li>
+                  <li style="margin: 10px 0;"><strong>Type:</strong> ${appointment.appointmentType}</li>
+                </ul>
+              </div>
+              
+              <p>We look forward to speaking with you!</p>
+              
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
+                <p style="margin: 5px 0;">Estate Planning & Probate</p>
+                <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
+              </div>
             </div>
-            
-            <p>We look forward to speaking with you!</p>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
-              <p style="margin: 5px 0;">Estate Planning & Probate</p>
-              <p style="margin: 5px 0;">Email: rozsagyenelaw1@gmail.com</p>
-            </div>
-          </div>
-        `
-      };
+          `
+        };
 
-      emailPromises.push(gmailTransporter.sendMail(mailOptions));
+        emailPromises.push(
+          gmailTransporter.sendMail(mailOptions)
+            .then(() => console.log(`  ✓ Email sent to ${appointment.clientEmail}`))
+            .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
+        );
 
-      batch.update(doc.ref, {
-        'remindersSent.1hour': true,
-        'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
-      });
+        batch.update(doc.ref, {
+          'remindersSent.1hour': true,
+          'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        sentCount++;
+      } else {
+        skippedCount++;
+      }
     });
 
     await Promise.all(emailPromises);
     await batch.commit();
     
-    console.log(`Sent ${appointmentsSnapshot.size} 1-hour reminders`);
+    console.log(`\n===== SUMMARY =====`);
+    console.log(`Total appointments found: ${appointmentsSnapshot.size}`);
+    console.log(`Reminders sent: ${sentCount}`);
+    console.log(`Skipped: ${skippedCount}`);
+    console.log(`✓ 1-hour reminder check completed successfully`);
 
   } catch (error) {
-    console.error('Error sending 1-hour reminders:', error);
+    console.error('ERROR in 1-hour reminders:', error);
+    console.error('Error stack:', error.stack);
   }
+  
+  console.log('===== 1-HOUR REMINDER CHECK COMPLETED =====\n');
 });
