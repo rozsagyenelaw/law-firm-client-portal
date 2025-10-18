@@ -158,10 +158,9 @@ const PublicBooking = () => {
         const sendClientConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
         await sendClientConfirmation(appointmentDetails);
 
-        // Send confirmation email to ATTORNEY
-        const sendAttorneyConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
-        await sendAttorneyConfirmation({
-          ...appointmentDetails,
+       // Send notification email to ATTORNEY (different email!)
+const sendAttorneyNotification = httpsCallable(functions, 'sendAttorneyAppointmentNotification');  // ← CORRECT!
+await sendAttorneyNotification(appointmentDetails);  // Send all the details including email and phone
           clientEmail: 'rozsagyenelaw1@gmail.com'
         });
         
