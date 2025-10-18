@@ -82,6 +82,8 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
             .checklist { background-color: #eff6ff; padding: 15px; border-radius: 8px; border-left: 4px solid #1e3a8a; margin: 20px 0; }
             .contact-box { background-color: #fef3c7; border: 2px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0; }
             .contact-highlight { font-size: 16px; font-weight: bold; color: #1e3a8a; }
+            .questionnaire-box { background-color: #f0fdf4; border: 2px solid #10b981; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
+            .btn-questionnaire { display: inline-block; background-color: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 10px 0; }
           </style>
         </head>
         <body>
@@ -137,6 +139,18 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
                     '<li>Find a quiet, private place for the call with good phone reception</li>' : 
                     '<li>Ensure you have a stable internet connection and webcam for the video call</li>'}
                 </ul>
+              </div>
+
+              <div class="questionnaire-box">
+                <h3 style="color: #065f46; margin-top: 0; margin-bottom: 10px;">📋 Optional: Complete Your Estate Planning Questionnaire</h3>
+                <p style="color: #047857; margin: 10px 0;">To maximize the value of your consultation, you may complete our comprehensive estate planning questionnaire in advance. This allows us to:</p>
+                <ul style="text-align: left; color: #065f46; margin: 10px auto; max-width: 400px;">
+                  <li>Review your specific situation before our call</li>
+                  <li>Provide more detailed and tailored guidance</li>
+                  <li>Address complex issues more efficiently</li>
+                </ul>
+                <p style="color: #047857; margin: 10px 0; font-size: 14px;"><em>This is completely optional - we can also complete it together during or after your consultation.</em></p>
+                <a href="https://livingtrust-attorneys.com/estate-planning-questionnaire" class="btn-questionnaire">Complete Questionnaire</a>
               </div>
 
               <p><strong>Need to reschedule or cancel?</strong><br>
