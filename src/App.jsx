@@ -34,6 +34,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Appointments from './components/Appointments';
 import DocumentSigning from './components/DocumentSigning';
 import DocuSign from './components/DocuSign';
+import PublicBooking from './components/PublicBooking';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -77,6 +78,10 @@ const ClientPortal = () => {
 
   // Check if current path is /admin
   const isAdminRoute = window.location.pathname === '/admin';
+
+  // Check if current path is public booking page
+  const isPublicBookingRoute = window.location.pathname === '/book' || 
+                               window.location.pathname === '/book-appointment';
 
   // Listen for auth state changes
   useEffect(() => {
@@ -426,6 +431,11 @@ const ClientPortal = () => {
       return null;
     }
     // If not logged in, fall through to show login page
+  }
+
+  // Check for public booking route - accessible without login
+  if (isPublicBookingRoute) {
+    return <PublicBooking />;
   }
 
   // For non-admin routes, if user is admin, they can still see client portal if they want
