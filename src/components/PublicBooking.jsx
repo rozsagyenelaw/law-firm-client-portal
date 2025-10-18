@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Video, MapPin, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -159,12 +158,9 @@ const PublicBooking = () => {
         const sendClientConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
         await sendClientConfirmation(appointmentDetails);
 
-        // Send confirmation email to ATTORNEY
-        const sendAttorneyConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
-        await sendAttorneyConfirmation({
-          ...appointmentDetails,
-          clientEmail: 'rozsagyenelaw1@gmail.com'
-        });
+        // Send notification email to ATTORNEY
+        const sendAttorneyNotification = httpsCallable(functions, 'sendAttorneyAppointmentNotification');
+        await sendAttorneyNotification(appointmentDetails);
         
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
