@@ -81,7 +81,8 @@ const ClientPortal = () => {
 
   // Check if current path is public booking page
   const isPublicBookingRoute = window.location.pathname === '/book' || 
-                               window.location.pathname === '/book-appointment';
+                               window.location.pathname === '/book-appointment' ||
+                               window.location.pathname === '/appointments';
 
   // Listen for auth state changes
   useEffect(() => {
@@ -434,7 +435,7 @@ const ClientPortal = () => {
   }
 
   // Check for public booking route - accessible without login
-  if (isPublicBookingRoute) {
+  if (isPublicBookingRoute && !user) {
     return <PublicBooking />;
   }
 
