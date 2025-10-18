@@ -2,7 +2,7 @@ require('dotenv').config();
 const functions = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
-const ClickSend = require('clicksend');
+const axios = require('axios');
 
 // Initialize admin if not already initialized
 if (!admin.apps.length) {
@@ -20,52 +20,46 @@ const gmailTransporter = nodemailer.createTransport({
   }
 });
 
-// Initialize ClickSend
-const clicksendConfig = functions.params.defineString('CLICKSEND_USERNAME');
-const clicksendApiKey = functions.params.defineString('CLICKSEND_API_KEY');
+// ClickSend credentials
+const CLICKSEND_USERNAME = 'rozsagyenelaw1@gmail.com';
+const CLICKSEND_API_KEY = '5FB6FC75-7032-5BB1-015B-4F775631B73E';
 
-// Helper function to send SMS
+// Helper function to send SMS using ClickSend REST API
 async function sendSMS(phoneNumber, message) {
   try {
-    // Get config values
-    const username = clicksendConfig.value();
-    const apiKey = clicksendApiKey.value();
-    
-    if (!username || !apiKey) {
-      console.log('ClickSend credentials not configured');
-      return { success: false, error: 'ClickSend not configured' };
-    }
-
-    // Configure ClickSend
-    const api = new ClickSend.SMSApi(username, apiKey);
-    
     // Format phone number (remove any non-digits and ensure it has country code)
     let formattedPhone = phoneNumber.replace(/\D/g, '');
     if (!formattedPhone.startsWith('1') && formattedPhone.length === 10) {
       formattedPhone = '1' + formattedPhone;
     }
     
-    const smsMessage = new ClickSend.SmsMessage();
-    smsMessage.to = formattedPhone;
-    smsMessage.body = message;
-    smsMessage.source = 'lawfirm';
+    // Create Basic Auth token
+    const authToken = Buffer.from(`${CLICKSEND_USERNAME}:${CLICKSEND_API_KEY}`).toString('base64');
     
-    const smsCollection = new ClickSend.SmsMessageCollection();
-    smsCollection.messages = [smsMessage];
-    
-    return new Promise((resolve, reject) => {
-      api.smsSendPost(smsCollection, (error, data) => {
-        if (error) {
-          console.error('ClickSend SMS Error:', error);
-          reject(error);
-        } else {
-          console.log('✓ SMS sent successfully to', formattedPhone);
-          resolve({ success: true, data });
+    // ClickSend API payload
+    const payload = {
+      messages: [
+        {
+          to: `+${formattedPhone}`,
+          body: message,
+          source: 'lawfirm'
         }
-      });
+      ]
+    };
+    
+    // Make API call
+    const response = await axios.post('https://rest.clicksend.com/v3/sms/send', payload, {
+      headers: {
+        'Authorization': `Basic ${authToken}`,
+        'Content-Type': 'application/json'
+      }
     });
+    
+    console.log('✓ SMS sent successfully to', formattedPhone);
+    return { success: true, data: response.data };
+    
   } catch (error) {
-    console.error('Error sending SMS:', error);
+    console.error('Error sending SMS:', error.response?.data || error.message);
     return { success: false, error: error.message };
   }
 }
@@ -458,7 +452,6 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
 });
 
 // Send 24-hour reminder emails - runs every hour
-// UPDATED VERSION - No Firestore index required
 exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', async (event) => {
   console.log('===== 24-HOUR REMINDER CHECK STARTED =====');
   console.log('Current time:', new Date().toISOString());
@@ -473,7 +466,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
     console.log('  Start:', tomorrowStart.toISOString());
     console.log('  End:', tomorrowEnd.toISOString());
 
-    // SIMPLIFIED QUERY - Only filter by date range (no index needed)
     const appointmentsSnapshot = await db.collection('appointments')
       .where('appointmentDate', '>=', tomorrowStart)
       .where('appointmentDate', '<=', tomorrowEnd)
@@ -490,7 +482,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
     appointmentsSnapshot.forEach(doc => {
       const appointment = doc.data();
       
-      // Filter by status and reminder flag IN CODE (not in query)
       if (appointment.status === 'confirmed' && 
           appointment.remindersSent?.['24hours'] !== true) {
         
@@ -502,7 +493,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
         console.log('  - Phone:', appointment.clientPhone || 'NOT PROVIDED');
         console.log('  - Date:', appointmentDate.toISOString());
 
-        // Send Email Reminder
         const mailOptions = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
           to: appointment.clientEmail,
@@ -543,7 +533,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
             .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
         );
 
-        // Send SMS Reminder if phone number is provided
         if (appointment.clientPhone && appointment.clientPhone.trim() !== '') {
           const smsMessage = `Law Offices of Rozsa Gyene: Reminder - Your appointment is tomorrow, ${appointmentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} PT. Reply STOP to opt out.`;
           
@@ -562,9 +551,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
         sentCount++;
       } else {
         skippedCount++;
-        console.log(`Skipping appointment ${doc.id}:`);
-        console.log(`  - Status: ${appointment.status}`);
-        console.log(`  - 24hr reminder already sent: ${appointment.remindersSent?.['24hours']}`);
       }
     });
 
@@ -586,7 +572,6 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
 });
 
 // Send 1-hour reminder emails - runs every 15 minutes
-// UPDATED VERSION - No Firestore index required
 exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', async (event) => {
   console.log('===== 1-HOUR REMINDER CHECK STARTED =====');
   console.log('Current time:', new Date().toISOString());
@@ -601,7 +586,6 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
     console.log('  Start:', rangeStart.toISOString());
     console.log('  End:', rangeEnd.toISOString());
 
-    // SIMPLIFIED QUERY - Only filter by date range (no index needed)
     const appointmentsSnapshot = await db.collection('appointments')
       .where('appointmentDate', '>=', rangeStart)
       .where('appointmentDate', '<=', rangeEnd)
@@ -618,7 +602,6 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
     appointmentsSnapshot.forEach(doc => {
       const appointment = doc.data();
       
-      // Filter by status and reminder flag IN CODE (not in query)
       if (appointment.status === 'confirmed' && 
           appointment.remindersSent?.['1hour'] !== true) {
         
@@ -630,7 +613,6 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
         console.log('  - Phone:', appointment.clientPhone || 'NOT PROVIDED');
         console.log('  - Date:', appointmentDate.toISOString());
 
-        // Send Email Reminder
         const mailOptions = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
           to: appointment.clientEmail,
@@ -668,7 +650,6 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
             .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
         );
 
-        // Send SMS Reminder if phone number is provided
         if (appointment.clientPhone && appointment.clientPhone.trim() !== '') {
           const smsMessage = `Law Offices of Rozsa Gyene: Your appointment starts in 1 hour at ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} PT. We look forward to speaking with you! Reply STOP to opt out.`;
           
