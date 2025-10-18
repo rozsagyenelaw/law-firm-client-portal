@@ -2,6 +2,7 @@ require('dotenv').config();
 const functions = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const ClickSend = require('clicksend');
 
 // Initialize admin if not already initialized
 if (!admin.apps.length) {
@@ -18,6 +19,56 @@ const gmailTransporter = nodemailer.createTransport({
     pass: 'nwgg fzkx qguh hsdc'
   }
 });
+
+// Initialize ClickSend
+const clicksendConfig = functions.params.defineString('CLICKSEND_USERNAME');
+const clicksendApiKey = functions.params.defineString('CLICKSEND_API_KEY');
+
+// Helper function to send SMS
+async function sendSMS(phoneNumber, message) {
+  try {
+    // Get config values
+    const username = clicksendConfig.value();
+    const apiKey = clicksendApiKey.value();
+    
+    if (!username || !apiKey) {
+      console.log('ClickSend credentials not configured');
+      return { success: false, error: 'ClickSend not configured' };
+    }
+
+    // Configure ClickSend
+    const api = new ClickSend.SMSApi(username, apiKey);
+    
+    // Format phone number (remove any non-digits and ensure it has country code)
+    let formattedPhone = phoneNumber.replace(/\D/g, '');
+    if (!formattedPhone.startsWith('1') && formattedPhone.length === 10) {
+      formattedPhone = '1' + formattedPhone;
+    }
+    
+    const smsMessage = new ClickSend.SmsMessage();
+    smsMessage.to = formattedPhone;
+    smsMessage.body = message;
+    smsMessage.source = 'lawfirm';
+    
+    const smsCollection = new ClickSend.SmsMessageCollection();
+    smsCollection.messages = [smsMessage];
+    
+    return new Promise((resolve, reject) => {
+      api.smsSendPost(smsCollection, (error, data) => {
+        if (error) {
+          console.error('ClickSend SMS Error:', error);
+          reject(error);
+        } else {
+          console.log('✓ SMS sent successfully to', formattedPhone);
+          resolve({ success: true, data });
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error sending SMS:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 // Send appointment confirmation email to CLIENT (PUBLIC - allows guest bookings)
 exports.sendClientAppointmentConfirmation = functions.https.onCall({
@@ -181,6 +232,22 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
     console.log(`✓ CLIENT CONFIRMATION EMAIL sent successfully`);
     console.log(`  --> Sent to: ${clientEmail}`);
     console.log(`  --> Appointment ID: ${appointmentId}`);
+    
+    // Send SMS confirmation if phone number is provided
+    if (clientPhone && clientPhone.trim() !== '') {
+      console.log('Attempting to send SMS confirmation...');
+      const smsMessage = `Law Offices of Rozsa Gyene: Your appointment is confirmed for ${appointmentDateFormatted} at ${appointmentTime} PT. Confirmation #${appointmentId.substring(0, 8)}. Reply STOP to opt out.`;
+      
+      try {
+        await sendSMS(clientPhone, smsMessage);
+        console.log('✓ SMS confirmation sent successfully');
+      } catch (smsError) {
+        console.error('SMS confirmation failed:', smsError);
+        // Don't fail the whole function if SMS fails
+      }
+    } else {
+      console.log('No phone number provided, skipping SMS');
+    }
     
     return { success: true, message: 'Client confirmation email sent successfully' };
 
@@ -416,6 +483,7 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
 
     const batch = db.batch();
     const emailPromises = [];
+    const smsPromises = [];
     let sentCount = 0;
     let skippedCount = 0;
 
@@ -431,8 +499,10 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
         console.log(`\nSending 24-hour reminder:`);
         console.log('  - Client:', appointment.clientName);
         console.log('  - Email:', appointment.clientEmail);
+        console.log('  - Phone:', appointment.clientPhone || 'NOT PROVIDED');
         console.log('  - Date:', appointmentDate.toISOString());
 
+        // Send Email Reminder
         const mailOptions = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
           to: appointment.clientEmail,
@@ -473,6 +543,17 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
             .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
         );
 
+        // Send SMS Reminder if phone number is provided
+        if (appointment.clientPhone && appointment.clientPhone.trim() !== '') {
+          const smsMessage = `Law Offices of Rozsa Gyene: Reminder - Your appointment is tomorrow, ${appointmentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} PT. Reply STOP to opt out.`;
+          
+          smsPromises.push(
+            sendSMS(appointment.clientPhone, smsMessage)
+              .then(() => console.log(`  ✓ SMS sent to ${appointment.clientPhone}`))
+              .catch(err => console.error(`  ✗ SMS failed to ${appointment.clientPhone}:`, err.message))
+          );
+        }
+
         batch.update(doc.ref, {
           'remindersSent.24hours': true,
           'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
@@ -487,7 +568,7 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
       }
     });
 
-    await Promise.all(emailPromises);
+    await Promise.all([...emailPromises, ...smsPromises]);
     await batch.commit();
     
     console.log(`\n===== SUMMARY =====`);
@@ -530,6 +611,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
 
     const batch = db.batch();
     const emailPromises = [];
+    const smsPromises = [];
     let sentCount = 0;
     let skippedCount = 0;
 
@@ -545,8 +627,10 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
         console.log(`\nSending 1-hour reminder:`);
         console.log('  - Client:', appointment.clientName);
         console.log('  - Email:', appointment.clientEmail);
+        console.log('  - Phone:', appointment.clientPhone || 'NOT PROVIDED');
         console.log('  - Date:', appointmentDate.toISOString());
 
+        // Send Email Reminder
         const mailOptions = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
           to: appointment.clientEmail,
@@ -584,6 +668,17 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
             .catch(err => console.error(`  ✗ Failed to send to ${appointment.clientEmail}:`, err.message))
         );
 
+        // Send SMS Reminder if phone number is provided
+        if (appointment.clientPhone && appointment.clientPhone.trim() !== '') {
+          const smsMessage = `Law Offices of Rozsa Gyene: Your appointment starts in 1 hour at ${appointmentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} PT. We look forward to speaking with you! Reply STOP to opt out.`;
+          
+          smsPromises.push(
+            sendSMS(appointment.clientPhone, smsMessage)
+              .then(() => console.log(`  ✓ SMS sent to ${appointment.clientPhone}`))
+              .catch(err => console.error(`  ✗ SMS failed to ${appointment.clientPhone}:`, err.message))
+          );
+        }
+
         batch.update(doc.ref, {
           'remindersSent.1hour': true,
           'lastReminderSent': admin.firestore.FieldValue.serverTimestamp()
@@ -595,7 +690,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
       }
     });
 
-    await Promise.all(emailPromises);
+    await Promise.all([...emailPromises, ...smsPromises]);
     await batch.commit();
     
     console.log(`\n===== SUMMARY =====`);
