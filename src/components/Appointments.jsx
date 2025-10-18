@@ -181,7 +181,7 @@ const Appointments = ({ userProfile }) => {
 
       const docRef = await addDoc(collection(db, 'appointments'), appointmentData);
 
-      // Send confirmation emails - BLUE email to both client and attorney
+      // Send confirmation emails
       try {
         const appointmentDetails = {
           appointmentId: docRef.id,
@@ -206,16 +206,13 @@ const Appointments = ({ userProfile }) => {
           notes: notes || 'None'
         };
 
-        // Send BLUE confirmation email to CLIENT
+        // Send confirmation email to CLIENT
         const sendClientConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
         await sendClientConfirmation(appointmentDetails);
 
-        // Send same BLUE confirmation email to ATTORNEY
-        const sendAttorneyConfirmation = httpsCallable(functions, 'sendClientAppointmentConfirmation');
-        await sendAttorneyConfirmation({
-          ...appointmentDetails,
-          clientEmail: 'rozsagyenelaw1@gmail.com' // Override to send to attorney
-        });
+        // Send notification email to ATTORNEY
+        const sendAttorneyNotification = httpsCallable(functions, 'sendAttorneyAppointmentNotification');
+        await sendAttorneyNotification(appointmentDetails);
         
       } catch (emailError) {
         console.error('Email notification failed:', emailError);
