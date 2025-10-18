@@ -205,6 +205,7 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
             .detail-row { display: flex; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
             .detail-label { font-weight: bold; min-width: 150px; color: #064e3b; }
             .detail-value { flex: 1; }
+            .contact-highlight { background-color: #fef3c7; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
             .notes-box { background-color: #f3f4f6; padding: 15px; border-radius: 6px; font-style: italic; border-left: 3px solid #064e3b; margin: 15px 0; }
             .action-buttons { text-align: center; margin: 25px 0; }
             .button { display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none; border-radius: 4px; font-weight: bold; }
@@ -226,29 +227,29 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
               </div>
 
               <div class="client-box">
-                <h3 style="color: #064e3b; margin-top: 0; border-bottom: 2px solid #064e3b; padding-bottom: 10px;">👤 Client Information</h3>
+                <h3 style="color: #064e3b; margin-top: 0; border-bottom: 2px solid #064e3b; padding-bottom: 10px;">👤 Client Contact Information</h3>
                 <div class="detail-row">
                   <span class="detail-label">Name:</span>
-                  <span class="detail-value"><strong style="font-size: 16px;">${clientName}</strong></span>
+                  <span class="detail-value"><strong style="font-size: 18px;">${clientName}</strong></span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Email:</span>
+                  <span class="detail-label">📧 Email:</span>
                   <span class="detail-value">
-                    <a href="mailto:${clientEmail}" style="color: #064e3b; text-decoration: none;">
-                      📧 ${clientEmail}
+                    <a href="mailto:${clientEmail}" class="contact-highlight" style="color: #064e3b; text-decoration: none;">
+                      ${clientEmail}
                     </a>
                   </span>
                 </div>
-                ${clientPhone ? `
                 <div class="detail-row" style="border-bottom: none;">
-                  <span class="detail-label">Phone:</span>
+                  <span class="detail-label">📞 Phone:</span>
                   <span class="detail-value">
-                    <a href="tel:${clientPhone}" style="color: #064e3b; text-decoration: none;">
-                      📞 ${clientPhone}
-                    </a>
+                    ${clientPhone ? `
+                      <a href="tel:${clientPhone}" class="contact-highlight" style="color: #064e3b; text-decoration: none;">
+                        ${clientPhone}
+                      </a>
+                    ` : '<span style="color: #9ca3af; font-style: italic;">Not provided</span>'}
                   </span>
                 </div>
-                ` : '<div style="border-bottom: none;"></div>'}
               </div>
 
               <div class="client-box">
@@ -287,6 +288,11 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
                 <a href="mailto:${clientEmail}?subject=Re: Your Upcoming Appointment&body=Dear ${clientName},%0D%0A%0D%0AThank you for scheduling an appointment..." style="display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none; border-radius: 4px; font-weight: bold; background-color: #2563eb; color: #ffffff;">
                   ✉️ Email Client
                 </a>
+                ${clientPhone ? `
+                <a href="tel:${clientPhone}" style="display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none; border-radius: 4px; font-weight: bold; background-color: #059669; color: #ffffff;">
+                  📞 Call Client
+                </a>
+                ` : ''}
               </div>
 
               <div class="next-steps">
