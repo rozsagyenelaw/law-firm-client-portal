@@ -19,18 +19,31 @@ const gmailTransporter = nodemailer.createTransport({
   }
 });
 
-// Send appointment confirmation email to CLIENT
+// Send appointment confirmation email to CLIENT (PUBLIC - allows guest bookings)
 exports.sendClientAppointmentConfirmation = functions.https.onCall({
   cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
 }, async (request) => {
-  if (!request.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  // REMOVED authentication check to allow guest bookings
+  // Validate required fields instead
+  const { clientName, clientEmail, appointmentId } = request.data;
+  
+  if (!clientName || !clientEmail || !appointmentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Client name, email, and appointment ID are required'
+    );
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(clientEmail)) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Invalid email address format'
+    );
   }
 
   const { 
-    appointmentId,
-    clientName, 
-    clientEmail,
     clientPhone,
     appointmentDate,
     appointmentDateFormatted,
@@ -112,10 +125,10 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
               </div>
 
               <p><strong>Need to reschedule or cancel?</strong><br>
-              Please log into your client portal at least 24 hours before your appointment.</p>
+              Please contact us at rozsagyenelaw1@gmail.com at least 24 hours before your appointment.</p>
 
               <div style="text-align: center;">
-                <a href="https://portal.livingtrust-attorneys.com/appointments" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">View My Appointments</a>
+                <a href="https://portal.livingtrust-attorneys.com/book" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">Book Another Appointment</a>
               </div>
 
               <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
@@ -147,18 +160,22 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
   }
 });
 
-// Send appointment notification email to ATTORNEY
+// Send appointment notification email to ATTORNEY (PUBLIC - allows guest bookings)
 exports.sendAttorneyAppointmentNotification = functions.https.onCall({
   cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
 }, async (request) => {
-  if (!request.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  // REMOVED authentication check to allow guest bookings
+  // Validate required fields instead
+  const { clientName, clientEmail, appointmentId } = request.data;
+  
+  if (!clientName || !clientEmail || !appointmentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Client name, email, and appointment ID are required'
+    );
   }
 
   const { 
-    appointmentId,
-    clientName, 
-    clientEmail,
     clientPhone,
     appointmentDate,
     appointmentDateFormatted,
@@ -194,6 +211,7 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
             .btn-primary { background-color: #064e3b; color: white; }
             .btn-secondary { background-color: #2563eb; color: white; }
             .next-steps { background-color: #eff6ff; padding: 15px; border-radius: 8px; border-left: 4px solid #2563eb; margin-top: 20px; }
+            .guest-badge { background-color: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
           </style>
         </head>
         <body>
@@ -204,6 +222,7 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
             <div class="content">
               <div class="alert">
                 <strong>⚠️ Action Required:</strong> A new client appointment has been scheduled and requires your attention.
+                ${!request.auth ? '<br><span class="guest-badge">👤 GUEST BOOKING</span>' : ''}
               </div>
 
               <div class="client-box">
@@ -278,6 +297,7 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
                   <li>Prepare relevant estate planning documents or templates</li>
                   <li>Review any previous correspondence with this client</li>
                   <li>Contact client if additional information is needed before the meeting</li>
+                  ${!request.auth ? '<li><strong>Note: This is a guest booking - client does not have a portal account</strong></li>' : ''}
                 </ul>
               </div>
 
@@ -351,9 +371,9 @@ exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', as
               </ul>
             </div>
             
-            <p>Please arrive 5 minutes early. If you need to cancel or reschedule, please contact us as soon as possible.</p>
+            <p>Please be ready 5 minutes early. If you need to cancel or reschedule, please contact us as soon as possible.</p>
             
-            <p>Client Portal: <a href="https://portal.livingtrust-attorneys.com">https://portal.livingtrust-attorneys.com</a></p>
+            <p>Contact: <a href="mailto:rozsagyenelaw1@gmail.com">rozsagyenelaw1@gmail.com</a></p>
             
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
@@ -424,7 +444,7 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
               </ul>
             </div>
             
-            <p>We look forward to seeing you!</p>
+            <p>We look forward to speaking with you!</p>
             
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
