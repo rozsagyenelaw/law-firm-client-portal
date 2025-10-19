@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Users, FileText, MessageSquare, Upload, Search, 
@@ -167,15 +168,16 @@ const AdminDashboard = () => {
 
       // Load ALL appointments for calendar view - EXCLUDE CANCELLED
       const allAppointmentsSnapshot = await getDocs(
-        collection(db, 'appointments')
+        query(
+          collection(db, 'appointments'),
+          where('status', '!=', 'cancelled')
+        )
       );
-      const allAppointmentsData = allAppointmentsSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          appointmentDate: doc.data().appointmentDate?.toDate()
-        }))
-        .filter(appt => appt.status !== 'cancelled'); // Filter out cancelled in memory
+      const allAppointmentsData = allAppointmentsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        appointmentDate: doc.data().appointmentDate?.toDate()
+      }));
       setAllAppointments(allAppointmentsData);
 
       // Load confirmed upcoming appointments for stats and list view
