@@ -93,6 +93,9 @@ const AdminDashboard = () => {
   const [selectedClient, setSelectedClient] = useState('');
   const [messageSubject, setMessageSubject] = useState('');
   const [messageContent, setMessageContent] = useState('');
+  // Message notification options - NEW!
+  const [sendViaEmail, setSendViaEmail] = useState(true);
+  const [sendViaSMS, setSendViaSMS] = useState(false);
   
   // Upload form data
   const [uploadClient, setUploadClient] = useState('');
@@ -433,11 +436,17 @@ const AdminDashboard = () => {
     }
   };
 
+  // UPDATED handleSendMessage function with Email/SMS support
   const handleSendMessage = async (e) => {
     e.preventDefault();
     
     if (!selectedClient || !messageSubject || !messageContent) {
       alert('Please fill in all fields');
+      return;
+    }
+
+    if (!sendViaEmail && !sendViaSMS) {
+      alert('Please select at least one notification method (Email or SMS)');
       return;
     }
 
@@ -455,8 +464,9 @@ const AdminDashboard = () => {
       
       const clientName = `${selectedClientData.firstName} ${selectedClientData.lastName}`;
       const clientEmail = selectedClientData.email;
+      const clientPhone = selectedClientData.phone || '';
       
-      console.log('Sending email to:', clientEmail);
+      console.log('Sending message to:', clientEmail);
       console.log('Client data:', selectedClientData);
       
       if (!clientEmail) {
@@ -464,6 +474,7 @@ const AdminDashboard = () => {
         return;
       }
 
+      // Save message to Firestore
       await addDoc(collection(db, 'messages'), {
         clientId: selectedClientData.uid || selectedClientData.id,
         clientName: clientName,
@@ -471,35 +482,62 @@ const AdminDashboard = () => {
         subject: messageSubject,
         message: messageContent,
         date: serverTimestamp(),
-        unread: true
+        unread: true,
+        sentViaEmail: sendViaEmail,
+        sentViaSMS: sendViaSMS && clientPhone ? true : false
       });
 
-      const emailParams = {
-        client_name: clientName,
-        to_email: clientEmail,
-        message_preview: messageContent.substring(0, 150) + (messageContent.length > 150 ? '...' : '')
-      };
+      // Send notification using Cloud Function
+      try {
+        const sendNotification = httpsCallable(functions, 'sendMessageNotification');
+        const result = await sendNotification({
+          clientName: clientName,
+          clientEmail: clientEmail,
+          clientPhone: clientPhone,
+          messageSubject: messageSubject,
+          messageContent: messageContent,
+          sendViaEmail: sendViaEmail,
+          sendViaSMS: sendViaSMS
+        });
 
-      console.log('Sending email to:', clientEmail);
-      console.log('Email params:', emailParams);
+        console.log('Notification result:', result.data);
+        
+        // Show detailed success message
+        let successMessage = 'Message saved successfully!';
+        if (result.data.results) {
+          if (result.data.results.email.sent) {
+            successMessage += '\n✓ Email notification sent';
+          }
+          if (result.data.results.sms.sent) {
+            successMessage += '\n✓ SMS notification sent';
+          }
+          if (result.data.results.email.error) {
+            successMessage += '\n⚠ Email notification failed: ' + result.data.results.email.error;
+          }
+          if (result.data.results.sms.error) {
+            successMessage += '\n⚠ SMS notification failed: ' + result.data.results.sms.error;
+          }
+        }
+        
+        alert(successMessage);
+      } catch (notificationError) {
+        console.error('Notification error:', notificationError);
+        alert('Message saved but notification failed: ' + notificationError.message);
+      }
 
-      await emailjs.send(
-        'service_0ak47yn',
-        'template_ita6dzu',
-        emailParams
-      );
-
+      // Reset form
       setSelectedClient('');
       setMessageSubject('');
       setMessageContent('');
+      setSendViaEmail(true);
+      setSendViaSMS(false);
       setShowMessageModal(false);
       
       await loadDashboardData();
       
-      alert('Message sent successfully!');
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Failed to send message');
+      alert('Failed to send message: ' + error.message);
     }
   };
 
@@ -697,7 +735,7 @@ const AdminDashboard = () => {
       {/* Main content */}
       <div className="lg:ml-64">
         <div className="p-4 sm:p-6 lg:p-8">
-          {/* Calendar Tab - NEW! */}
+          {/* Calendar Tab */}
           {activeTab === 'calendar' && (
             <div>
               <div className="flex justify-between items-center mb-6">
@@ -1167,6 +1205,19 @@ const AdminDashboard = () => {
                           </div>
                           <p className="text-sm text-gray-600 mt-1">To: {message.clientName}</p>
                           <p className="text-sm text-gray-700 mt-2">{message.message}</p>
+                          {/* Show delivery methods */}
+                          <div className="mt-3 flex items-center space-x-2">
+                            {message.sentViaEmail && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                📧 Email
+                              </span>
+                            )}
+                            {message.sentViaSMS && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                📱 SMS
+                              </span>
+                            )}
+                          </div>
                         </div>
                         {message.unread && (
                           <span className="ml-4 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
@@ -1555,7 +1606,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Send Message Modal */}
+      {/* Send Message Modal - UPDATED WITH EMAIL/SMS OPTIONS */}
       {showMessageModal && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
@@ -1607,6 +1658,42 @@ const AdminDashboard = () => {
                   required
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 />
+              </div>
+
+              {/* Notification Method Selection - NEW! */}
+              <div className="border-t pt-4 mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Send Notification Via:
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={sendViaEmail}
+                      onChange={(e) => setSendViaEmail(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">
+                      📧 Email (Recommended)
+                    </span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={sendViaSMS}
+                      onChange={(e) => setSendViaSMS(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">
+                      📱 SMS {selectedClient && clients.find(c => c.id === selectedClient)?.phone ? '' : '(No phone number on file)'}
+                    </span>
+                  </label>
+                </div>
+                {!sendViaEmail && !sendViaSMS && (
+                  <p className="mt-2 text-sm text-red-600">
+                    ⚠ Please select at least one notification method
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">
