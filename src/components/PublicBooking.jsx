@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Video, MapPin, CheckCircle, AlertCircle, X } from 'lucide-react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { Calendar, Clock, Video, MapPin, CheckCircle, AlertCircle, X, Search } from 'lucide-react';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { db, functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 
@@ -18,6 +18,12 @@ const PublicBooking = () => {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+
+  // Manage appointment fields
+  const [lookupEmail, setLookupEmail] = useState('');
+  const [foundAppointments, setFoundAppointments] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
 
   const APPOINTMENT_TYPES = [
     { value: 'virtual', label: 'Virtual Consultation', icon: Video },
@@ -188,6 +194,74 @@ const PublicBooking = () => {
     }
   };
 
+  const handleLookupAppointments = async (e) => {
+    e.preventDefault();
+    setIsSearching(true);
+    setSearchError('');
+    setFoundAppointments([]);
+
+    try {
+      // Query appointments by email
+      const appointmentsQuery = query(
+        collection(db, 'appointments'),
+        where('clientEmail', '==', lookupEmail.toLowerCase().trim()),
+        where('status', '==', 'confirmed')
+      );
+
+      const snapshot = await getDocs(appointmentsQuery);
+      const appointments = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        appointmentDate: doc.data().appointmentDate?.toDate()
+      }));
+
+      // Filter for upcoming appointments only
+      const now = new Date();
+      const upcomingAppointments = appointments.filter(appt => appt.appointmentDate >= now);
+
+      if (upcomingAppointments.length === 0) {
+        setSearchError('No upcoming appointments found for this email address.');
+      } else {
+        setFoundAppointments(upcomingAppointments);
+      }
+    } catch (error) {
+      console.error('Error looking up appointments:', error);
+      setSearchError('Failed to look up appointments. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleCancelAppointment = async (appointmentId, appointmentDetails) => {
+    if (!window.confirm('Are you sure you want to cancel this appointment? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Update appointment status to cancelled
+      await updateDoc(doc(db, 'appointments', appointmentId), {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp()
+      });
+
+      // Remove from found appointments
+      setFoundAppointments(prev => prev.filter(appt => appt.id !== appointmentId));
+
+      // Show success message
+      setSuccessMessage('Appointment cancelled successfully. You will receive a confirmation email shortly.');
+
+      // Scroll to show message
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccessMessage(''), 5000);
+
+    } catch (error) {
+      console.error('Error cancelling appointment:', error);
+      setSearchError('Failed to cancel appointment. Please try again or contact us directly.');
+    }
+  };
+
   const getMinDate = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -252,7 +326,8 @@ const PublicBooking = () => {
         </div>
 
         {/* Booking Form */}
-        <div className="bg-white shadow-lg rounded-lg p-8">
+        <div className="bg-white shadow-lg rounded-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Book New Appointment</h2>
           <form onSubmit={handleBookAppointment} className="space-y-6">
             {/* Contact Information */}
             <div>
@@ -434,6 +509,119 @@ const PublicBooking = () => {
               </p>
             </div>
           </form>
+        </div>
+
+        {/* Manage Appointment Section */}
+        <div className="bg-white shadow-lg rounded-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Manage Your Appointment</h2>
+          <p className="text-gray-600 mb-6">
+            Already booked an appointment? Enter your email to view and manage your upcoming appointments.
+          </p>
+
+          <form onSubmit={handleLookupAppointments} className="mb-6">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <input
+                  type="email"
+                  value={lookupEmail}
+                  onChange={(e) => setLookupEmail(e.target.value)}
+                  required
+                  placeholder="Enter your email address"
+                  className="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isSearching}
+                className="flex items-center px-6 py-3 bg-blue-900 text-white font-semibold rounded-lg hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSearching ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-5 w-5 mr-2" />
+                    Find Appointments
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+
+          {searchError && (
+            <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg flex items-start">
+              <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+              <p className="text-sm">{searchError}</p>
+            </div>
+          )}
+
+          {foundAppointments.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900">Your Upcoming Appointments</h3>
+              {foundAppointments.map((appointment) => (
+                <div key={appointment.id} className="border border-gray-200 rounded-lg p-5 bg-gray-50">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center mb-3">
+                        {appointment.appointmentType === 'virtual' ? (
+                          <Video className="h-5 w-5 text-green-600 mr-2" />
+                        ) : (
+                          <MapPin className="h-5 w-5 text-blue-600 mr-2" />
+                        )}
+                        <h4 className="text-base font-semibold text-gray-900">
+                          {APPOINTMENT_TYPES.find(t => t.value === appointment.appointmentType)?.label}
+                        </h4>
+                      </div>
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2" />
+                          <span>
+                            {appointment.appointmentDate.toLocaleDateString('en-US', { 
+                              weekday: 'long', 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric' 
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2" />
+                          <span>
+                            {appointment.appointmentDate.toLocaleTimeString('en-US', { 
+                              hour: 'numeric', 
+                              minute: '2-digit',
+                              hour12: true 
+                            })} (Pacific Time)
+                          </span>
+                        </div>
+                        {appointment.notes && (
+                          <p className="mt-2 text-gray-700">
+                            <strong>Notes:</strong> {appointment.notes}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-2">
+                          Confirmation: #{appointment.id.substring(0, 8)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      <button
+                        onClick={() => handleCancelAppointment(appointment.id, appointment)}
+                        className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        Cancel Appointment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Footer Info */}
