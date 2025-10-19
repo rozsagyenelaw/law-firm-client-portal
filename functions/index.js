@@ -465,6 +465,250 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
   }
 });
 
+// Send cancellation confirmation email to CLIENT
+exports.sendClientCancellationConfirmation = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+}, async (request) => {
+  const { clientName, clientEmail, clientPhone, appointmentId, appointmentDateFormatted, appointmentTime, appointmentType } = request.data;
+  
+  if (!clientName || !clientEmail || !appointmentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Client name, email, and appointment ID are required'
+    );
+  }
+
+  try {
+    console.log('===== CLIENT CANCELLATION CONFIRMATION EMAIL =====');
+    console.log('Sending TO:', clientEmail);
+    console.log('Client Name:', clientName);
+    console.log('Appointment ID:', appointmentId);
+    
+    const clientMailOptions = {
+      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+      to: clientEmail,
+      subject: `Appointment Cancelled - ${appointmentDateFormatted}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+            .appointment-details { background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; }
+            .detail-row { display: flex; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+            .detail-label { font-weight: bold; min-width: 120px; color: #dc2626; }
+            .detail-value { flex: 1; }
+            .footer { text-align: center; padding: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+            .info-box { background-color: #fef3c7; border: 2px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .btn-rebook { display: inline-block; background-color: #1e3a8a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0;">✗ Appointment Cancelled</h1>
+            </div>
+            <div class="content">
+              <h2 style="color: #dc2626;">Dear ${clientName},</h2>
+              <p>This email confirms that your appointment has been cancelled as requested.</p>
+              
+              <div class="appointment-details">
+                <h3 style="color: #dc2626; margin-top: 0;">Cancelled Appointment Details</h3>
+                <div class="detail-row">
+                  <span class="detail-label">📅 Date:</span>
+                  <span class="detail-value"><strong>${appointmentDateFormatted}</strong></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">🕐 Time:</span>
+                  <span class="detail-value"><strong>${appointmentTime}</strong> Pacific Time</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">📍 Type:</span>
+                  <span class="detail-value">${appointmentType}</span>
+                </div>
+                <div class="detail-row" style="border-bottom: none;">
+                  <span class="detail-label">🔖 Confirmation:</span>
+                  <span class="detail-value"><code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">#${appointmentId.substring(0, 8)}</code></span>
+                </div>
+              </div>
+
+              <div class="info-box">
+                <h3 style="color: #92400e; margin-top: 0; margin-bottom: 10px;">Need to Reschedule?</h3>
+                <p style="color: #78350f; margin: 10px 0;">We understand that plans change. If you'd like to schedule a new appointment, you can book online anytime.</p>
+                <div style="text-align: center; margin-top: 15px;">
+                  <a href="https://portal.livingtrust-attorneys.com/book" class="btn-rebook">Book New Appointment</a>
+                </div>
+              </div>
+
+              <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+                If you have any questions or if this cancellation was made in error, please contact us immediately.
+              </p>
+            </div>
+            <div class="footer">
+              <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
+              <p style="margin: 5px 0;">Estate Planning & Probate Attorney</p>
+              <p style="margin: 5px 0;">📧 rozsagyenelaw1@gmail.com</p>
+              <p style="margin: 5px 0;">🌐 <a href="https://portal.livingtrust-attorneys.com" style="color: #1e3a8a;">Client Portal</a></p>
+              <p style="margin-top: 15px; color: #9ca3af;">© ${new Date().getFullYear()} Law Offices of Rozsa Gyene. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await gmailTransporter.sendMail(clientMailOptions);
+    console.log(`✓ CLIENT CANCELLATION EMAIL sent successfully to ${clientEmail}`);
+    
+    // Send SMS cancellation if phone number is provided
+    if (clientPhone && clientPhone.trim() !== '') {
+      console.log('Attempting to send SMS cancellation confirmation...');
+      const smsMessage = `Law Offices of Rozsa Gyene: Your appointment on ${appointmentDateFormatted} at ${appointmentTime} PT has been cancelled. To reschedule, visit portal.livingtrust-attorneys.com/book. Reply STOP to opt out.`;
+      
+      try {
+        await sendSMS(clientPhone, smsMessage);
+        console.log('✓ SMS cancellation confirmation sent successfully');
+      } catch (smsError) {
+        console.error('SMS cancellation confirmation failed:', smsError);
+      }
+    }
+    
+    return { success: true, message: 'Client cancellation confirmation sent successfully' };
+
+  } catch (error) {
+    console.error('Error sending client cancellation email:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send client cancellation email: ' + error.message);
+  }
+});
+
+// Send cancellation notification email to ATTORNEY
+exports.sendAttorneyCancellationNotification = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+}, async (request) => {
+  const { clientName, clientEmail, clientPhone, appointmentId, appointmentDateFormatted, appointmentTime, appointmentType, cancelledBy } = request.data;
+  
+  if (!clientName || !clientEmail || !appointmentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Client name, email, and appointment ID are required'
+    );
+  }
+
+  try {
+    console.log('===== ATTORNEY CANCELLATION NOTIFICATION EMAIL =====');
+    console.log('Sending TO: rozsagyenelaw1@gmail.com (ATTORNEY)');
+    console.log('Client Name:', clientName);
+    console.log('Appointment ID:', appointmentId);
+    console.log('Cancelled By:', cancelledBy || 'Unknown');
+    
+    const attorneyMailOptions = {
+      from: '"Client Portal System" <rozsagyenelaw1@gmail.com>',
+      to: 'rozsagyenelaw1@gmail.com',
+      subject: `🚫 Appointment Cancelled: ${clientName} - ${appointmentDateFormatted}`,
+      replyTo: clientEmail,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 650px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+            .alert { background-color: #fee2e2; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; border-radius: 4px; }
+            .client-box { background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .detail-row { display: flex; padding: 12px 0; border-bottom: 1px solid #e5e7eb; align-items: center; }
+            .detail-label { font-weight: bold; min-width: 150px; color: #dc2626; font-size: 14px; }
+            .detail-value { flex: 1; font-size: 15px; }
+            .contact-highlight { background-color: #fef3c7; padding: 6px 12px; border-radius: 4px; font-weight: bold; display: inline-block; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0;">🚫 Appointment Cancelled</h1>
+            </div>
+            <div class="content">
+              <div class="alert">
+                <strong>⚠️ Notification:</strong> An appointment has been cancelled.
+                ${cancelledBy ? `<br><strong>Cancelled by:</strong> ${cancelledBy}` : ''}
+              </div>
+
+              <div class="client-box">
+                <h3 style="color: #dc2626; margin-top: 0; border-bottom: 2px solid #dc2626; padding-bottom: 10px;">👤 Client Information</h3>
+                <div class="detail-row">
+                  <span class="detail-label">👤 Client Name:</span>
+                  <span class="detail-value"><strong>${clientName}</strong></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">📧 Email:</span>
+                  <span class="detail-value">
+                    <a href="mailto:${clientEmail}" style="color: #dc2626; text-decoration: none;">
+                      <span class="contact-highlight">${clientEmail}</span>
+                    </a>
+                  </span>
+                </div>
+                <div class="detail-row" style="border-bottom: none;">
+                  <span class="detail-label">📞 Phone:</span>
+                  <span class="detail-value">
+                    ${clientPhone && clientPhone.trim() !== '' ? `
+                      <a href="tel:${clientPhone}" style="color: #dc2626; text-decoration: none;">
+                        <span class="contact-highlight">${clientPhone}</span>
+                      </a>
+                    ` : '<span style="color: #ef4444;">Not Provided</span>'}
+                  </span>
+                </div>
+              </div>
+
+              <div class="client-box">
+                <h3 style="color: #dc2626; margin-top: 0; border-bottom: 2px solid #dc2626; padding-bottom: 10px;">📅 Cancelled Appointment Details</h3>
+                <div class="detail-row">
+                  <span class="detail-label">📅 Date:</span>
+                  <span class="detail-value"><strong style="font-size: 16px;">${appointmentDateFormatted}</strong></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">🕐 Time:</span>
+                  <span class="detail-value"><strong style="font-size: 16px;">${appointmentTime}</strong> Pacific Time</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">📍 Type:</span>
+                  <span class="detail-value">${appointmentType}</span>
+                </div>
+                <div class="detail-row" style="border-bottom: none;">
+                  <span class="detail-label">🔖 Appointment ID:</span>
+                  <span class="detail-value"><code style="background: #f3f4f6; padding: 4px 8px; border-radius: 3px; font-size: 13px;">${appointmentId}</code></span>
+                </div>
+              </div>
+
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center;">
+                <p style="color: #6b7280; font-size: 14px; margin: 5px 0;">
+                  This cancellation notification was sent from your Client Portal System
+                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
+                  Time sent: ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT
+                </p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await gmailTransporter.sendMail(attorneyMailOptions);
+    console.log(`✓ ATTORNEY CANCELLATION NOTIFICATION sent successfully`);
+    
+    return { success: true, message: 'Attorney cancellation notification sent successfully' };
+
+  } catch (error) {
+    console.error('Error sending attorney cancellation email:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send attorney cancellation email: ' + error.message);
+  }
+});
+
 // Send 24-hour reminder emails - runs every hour
 exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', async (event) => {
   console.log('===== 24-HOUR REMINDER CHECK STARTED =====');
