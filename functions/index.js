@@ -709,6 +709,163 @@ exports.sendAttorneyCancellationNotification = functions.https.onCall({
   }
 });
 
+// Send message notification to client (Email + SMS) - NEW FUNCTION
+exports.sendMessageNotification = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+}, async (request) => {
+  const { 
+    clientName, 
+    clientEmail, 
+    clientPhone, 
+    messageSubject, 
+    messageContent,
+    sendViaEmail,
+    sendViaSMS 
+  } = request.data;
+  
+  if (!clientName || !clientEmail || !messageSubject || !messageContent) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'Client name, email, subject, and message content are required'
+    );
+  }
+
+  if (!sendViaEmail && !sendViaSMS) {
+    throw new functions.https.HttpsError(
+      'invalid-argument', 
+      'At least one notification method (Email or SMS) must be selected'
+    );
+  }
+
+  console.log('===== MESSAGE NOTIFICATION =====');
+  console.log('Sending TO:', clientEmail);
+  console.log('Client Name:', clientName);
+  console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
+  console.log('Subject:', messageSubject);
+  console.log('Send via Email:', sendViaEmail);
+  console.log('Send via SMS:', sendViaSMS);
+
+  const results = {
+    email: { sent: false, error: null },
+    sms: { sent: false, error: null }
+  };
+
+  try {
+    // Send Email Notification
+    if (sendViaEmail) {
+      try {
+        // Create a preview of the message (first 200 characters)
+        const messagePreview = messageContent.length > 200 
+          ? messageContent.substring(0, 200) + '...' 
+          : messageContent;
+
+        const emailOptions = {
+          from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+          to: clientEmail,
+          subject: `New Message: ${messageSubject}`,
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+                .message-box { background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #1e3a8a; }
+                .button { display: inline-block; background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1 style="margin: 0;">💬 New Message from Your Attorney</h1>
+                </div>
+                <div class="content">
+                  <h2 style="color: #1e3a8a;">Dear ${clientName},</h2>
+                  <p>You have received a new message from Law Offices of Rozsa Gyene.</p>
+                  
+                  <div class="message-box">
+                    <h3 style="color: #1e3a8a; margin-top: 0;">Subject: ${messageSubject}</h3>
+                    <div style="color: #4b5563; margin: 15px 0; font-size: 15px; white-space: pre-wrap;">${messageContent}</div>
+                  </div>
+
+                  <p style="text-align: center;">
+                    <a href="https://portal.livingtrust-attorneys.com" class="button">
+                      View in Client Portal
+                    </a>
+                  </p>
+
+                  <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+                    Please log in to your client portal to view all your messages. If you have any questions, feel free to reply or contact us directly.
+                  </p>
+                </div>
+                <div class="footer">
+                  <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
+                  <p style="margin: 5px 0;">Estate Planning & Probate Attorney</p>
+                  <p style="margin: 5px 0;">📧 rozsagyenelaw1@gmail.com</p>
+                  <p style="margin: 5px 0;">🌐 <a href="https://portal.livingtrust-attorneys.com" style="color: #1e3a8a;">Client Portal</a></p>
+                  <p style="margin-top: 15px; color: #9ca3af;">© ${new Date().getFullYear()} Law Offices of Rozsa Gyene. All rights reserved.</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `
+        };
+
+        await gmailTransporter.sendMail(emailOptions);
+        console.log('✓ Email notification sent successfully to', clientEmail);
+        results.email.sent = true;
+      } catch (emailError) {
+        console.error('Email notification failed:', emailError);
+        results.email.error = emailError.message;
+      }
+    }
+
+    // Send SMS Notification
+    if (sendViaSMS) {
+      if (!clientPhone || clientPhone.trim() === '') {
+        console.error('SMS requested but no phone number provided');
+        results.sms.error = 'No phone number provided';
+      } else {
+        try {
+          // Create a short SMS message (SMS has 160 character limit)
+          const smsMessage = `Law Offices of Rozsa Gyene: New message from your attorney. Subject: "${messageSubject}". Check your client portal: portal.livingtrust-attorneys.com. Reply STOP to opt out.`;
+          
+          await sendSMS(clientPhone, smsMessage);
+          console.log('✓ SMS notification sent successfully to', clientPhone);
+          results.sms.sent = true;
+        } catch (smsError) {
+          console.error('SMS notification failed:', smsError);
+          results.sms.error = smsError.message;
+        }
+      }
+    }
+
+    // Determine overall success
+    const emailSuccess = !sendViaEmail || results.email.sent;
+    const smsSuccess = !sendViaSMS || results.sms.sent;
+    const overallSuccess = emailSuccess && smsSuccess;
+
+    console.log('===== MESSAGE NOTIFICATION RESULTS =====');
+    console.log('Email:', results.email.sent ? '✓ Sent' : (sendViaEmail ? '✗ Failed' : '- Not requested'));
+    console.log('SMS:', results.sms.sent ? '✓ Sent' : (sendViaSMS ? '✗ Failed' : '- Not requested'));
+
+    return { 
+      success: overallSuccess,
+      results: results,
+      message: overallSuccess 
+        ? 'All notifications sent successfully' 
+        : 'Some notifications failed - see results for details'
+    };
+
+  } catch (error) {
+    console.error('Error in message notification:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send message notification: ' + error.message);
+  }
+});
+
 // Send 24-hour reminder emails - runs every hour
 exports.send24HourReminders = functions.scheduler.onSchedule('every 1 hours', async (event) => {
   console.log('===== 24-HOUR REMINDER CHECK STARTED =====');
