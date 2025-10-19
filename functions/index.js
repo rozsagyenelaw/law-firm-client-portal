@@ -1,3 +1,4 @@
+// Force redeploy - 2025-10-19 v2
 require('dotenv').config();
 const functions = require('firebase-functions/v2');
 const admin = require('firebase-admin');
@@ -27,14 +28,27 @@ const CLICKSEND_API_KEY = '5FB6FC75-7032-5BB1-015B-4F775631B73E';
 // Helper function to send SMS using ClickSend REST API
 async function sendSMS(phoneNumber, message) {
   try {
+    console.log('=== STARTING SMS SEND ===');
+    console.log('Phone Number:', phoneNumber);
+    console.log('Message Length:', message.length);
+    console.log('Message Preview:', message.substring(0, 50) + '...');
+    
     // Format phone number (remove any non-digits and ensure it has country code)
     let formattedPhone = phoneNumber.replace(/\D/g, '');
+    console.log('After removing non-digits:', formattedPhone);
+    
     if (!formattedPhone.startsWith('1') && formattedPhone.length === 10) {
       formattedPhone = '1' + formattedPhone;
+      console.log('Added country code (1):', formattedPhone);
     }
+    
+    console.log('Final Formatted Phone:', formattedPhone);
+    console.log('ClickSend Username:', CLICKSEND_USERNAME);
+    console.log('API Key (first 10 chars):', CLICKSEND_API_KEY.substring(0, 10) + '...');
     
     // Create Basic Auth token
     const authToken = Buffer.from(`${CLICKSEND_USERNAME}:${CLICKSEND_API_KEY}`).toString('base64');
+    console.log('Auth Token Created (first 20 chars):', authToken.substring(0, 20) + '...');
     
     // ClickSend API payload
     const payload = {
@@ -47,6 +61,12 @@ async function sendSMS(phoneNumber, message) {
       ]
     };
     
+    console.log('Payload Created:');
+    console.log('  - To:', payload.messages[0].to);
+    console.log('  - Body Length:', payload.messages[0].body.length);
+    console.log('  - Source:', payload.messages[0].source);
+    console.log('Sending to ClickSend API...');
+    
     // Make API call
     const response = await axios.post('https://rest.clicksend.com/v3/sms/send', payload, {
       headers: {
@@ -55,12 +75,36 @@ async function sendSMS(phoneNumber, message) {
       }
     });
     
+    console.log('=== CLICKSEND API RESPONSE ===');
+    console.log('Status Code:', response.status);
+    console.log('Status Text:', response.statusText);
+    console.log('Response Data:', JSON.stringify(response.data, null, 2));
     console.log('✓ SMS sent successfully to', formattedPhone);
+    console.log('=== SMS SEND COMPLETE ===');
+    
     return { success: true, data: response.data };
     
   } catch (error) {
-    console.error('Error sending SMS:', error.response?.data || error.message);
-    return { success: false, error: error.message };
+    console.error('=== SMS SEND ERROR ===');
+    console.error('Error Type:', error.constructor.name);
+    console.error('Error Message:', error.message);
+    
+    if (error.response) {
+      console.error('HTTP Status:', error.response.status);
+      console.error('HTTP Status Text:', error.response.statusText);
+      console.error('Response Headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('Response Data:', JSON.stringify(error.response.data, null, 2));
+    } else if (error.request) {
+      console.error('No response received from ClickSend');
+      console.error('Request:', error.request);
+    } else {
+      console.error('Error setting up request:', error.message);
+    }
+    
+    console.error('Full Error Stack:', error.stack);
+    console.error('=== END SMS ERROR ===');
+    
+    return { success: false, error: error.message, details: error.response?.data };
   }
 }
 
@@ -247,10 +291,15 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
       const smsMessage = `Law Offices of Rozsa Gyene: Your appointment is confirmed for ${appointmentDateFormatted} at ${appointmentTime} PT. Confirmation #${appointmentId.substring(0, 8)}. Reply STOP to opt out.`;
       
       try {
-        await sendSMS(clientPhone, smsMessage);
-        console.log('✓ SMS confirmation sent successfully');
+        const smsResult = await sendSMS(clientPhone, smsMessage);
+        if (smsResult.success) {
+          console.log('✓ SMS confirmation sent successfully');
+        } else {
+          console.error('SMS confirmation failed:', smsResult.error);
+          console.error('SMS Error Details:', smsResult.details);
+        }
       } catch (smsError) {
-        console.error('SMS confirmation failed:', smsError);
+        console.error('SMS confirmation exception:', smsError);
         // Don't fail the whole function if SMS fails
       }
     } else {
@@ -482,6 +531,7 @@ exports.sendClientCancellationConfirmation = functions.https.onCall({
     console.log('===== CLIENT CANCELLATION CONFIRMATION EMAIL =====');
     console.log('Sending TO:', clientEmail);
     console.log('Client Name:', clientName);
+    console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
     console.log('Appointment ID:', appointmentId);
     
     const clientMailOptions = {
@@ -569,10 +619,15 @@ exports.sendClientCancellationConfirmation = functions.https.onCall({
       const smsMessage = `Law Offices of Rozsa Gyene: Your appointment on ${appointmentDateFormatted} at ${appointmentTime} PT has been cancelled. To reschedule, visit portal.livingtrust-attorneys.com/book. Reply STOP to opt out.`;
       
       try {
-        await sendSMS(clientPhone, smsMessage);
-        console.log('✓ SMS cancellation confirmation sent successfully');
+        const smsResult = await sendSMS(clientPhone, smsMessage);
+        if (smsResult.success) {
+          console.log('✓ SMS cancellation confirmation sent successfully');
+        } else {
+          console.error('SMS cancellation confirmation failed:', smsResult.error);
+          console.error('SMS Error Details:', smsResult.details);
+        }
       } catch (smsError) {
-        console.error('SMS cancellation confirmation failed:', smsError);
+        console.error('SMS cancellation confirmation exception:', smsError);
       }
     }
     
@@ -754,11 +809,6 @@ exports.sendMessageNotification = functions.https.onCall({
     // Send Email Notification
     if (sendViaEmail) {
       try {
-        // Create a preview of the message (first 200 characters)
-        const messagePreview = messageContent.length > 200 
-          ? messageContent.substring(0, 200) + '...' 
-          : messageContent;
-
         const emailOptions = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
           to: clientEmail,
@@ -833,11 +883,16 @@ exports.sendMessageNotification = functions.https.onCall({
           // Create a short SMS message (SMS has 160 character limit)
           const smsMessage = `Law Offices of Rozsa Gyene: New message from your attorney. Subject: "${messageSubject}". Check your client portal: portal.livingtrust-attorneys.com. Reply STOP to opt out.`;
           
-          await sendSMS(clientPhone, smsMessage);
-          console.log('✓ SMS notification sent successfully to', clientPhone);
-          results.sms.sent = true;
+          const smsResult = await sendSMS(clientPhone, smsMessage);
+          if (smsResult.success) {
+            console.log('✓ SMS notification sent successfully to', clientPhone);
+            results.sms.sent = true;
+          } else {
+            console.error('SMS notification failed:', smsResult.error);
+            results.sms.error = smsResult.error;
+          }
         } catch (smsError) {
-          console.error('SMS notification failed:', smsError);
+          console.error('SMS notification exception:', smsError);
           results.sms.error = smsError.message;
         }
       }
