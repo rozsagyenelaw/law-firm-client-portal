@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Video, MapPin, CheckCircle, AlertCircle, X, Plus } from 'lucide-react';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db, auth, functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 
@@ -61,7 +61,7 @@ const Appointments = ({ userProfile }) => {
       const appointmentsQuery = query(
         collection(db, 'appointments'),
         where('clientId', '==', auth.currentUser.uid),
-        where('status', '!=', 'cancelled'),
+        where('status', '!=', 'cancelled'),  // Exclude cancelled
         orderBy('status'),
         orderBy('appointmentDate', 'asc')
       );
@@ -253,7 +253,12 @@ const Appointments = ({ userProfile }) => {
     }
 
     try {
-      await deleteDoc(doc(db, 'appointments', appointmentId));
+      // Update status to cancelled instead of deleting
+      await updateDoc(doc(db, 'appointments', appointmentId), {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp()
+      });
+      
       setSuccessMessage('Appointment cancelled successfully.');
       await loadAppointments();
 
