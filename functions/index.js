@@ -206,18 +206,17 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
 
               <div class="manage-box">
                 <h3 style="color: #991b1b; margin-top: 0; margin-bottom: 10px;">📅 Need to Reschedule or Cancel?</h3>
-                <p style="color: #7f1d1d; margin: 10px 0;">If you need to make changes to your appointment, you can manage it using the link below:</p>
+                <p style="color: #7f1d1d; margin: 10px 0;">You can manage your appointment using the button below:</p>
                 <div class="confirmation-id">
                   <strong>Your Confirmation ID:</strong><br>
                   ${appointmentId.substring(0, 8).toUpperCase()}
                 </div>
-                <p style="color: #7f1d1d; margin: 10px 0; font-size: 14px;">Please reschedule or cancel at least 24 hours before your appointment.</p>
+                <p style="color: #7f1d1d; margin: 10px 0; font-size: 14px;">Please make changes at least 24 hours before your appointment.</p>
                 <a href="${manageUrl}" class="btn-cancel">Manage Appointment</a>
-                <p style="color: #6b7280; margin: 10px 0; font-size: 12px;">You can also contact us at rozsagyenelaw1@gmail.com</p>
               </div>
 
               <div style="text-align: center;">
-                <a href="https://portal.livingtrust-attorneys.com/book" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">Book Another Appointment</a>
+                <a href="${manageUrl}" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">Manage Your Appointments</a>
               </div>
 
               <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
