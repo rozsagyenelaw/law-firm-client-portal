@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Users, FileText, MessageSquare, Upload, Search, 
@@ -35,7 +34,8 @@ import {
   uploadBytes, 
   getDownloadURL 
 } from 'firebase/storage';
-import { auth, db, storage } from '../firebase';
+import { auth, db, storage, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS
@@ -217,13 +217,61 @@ const AdminDashboard = () => {
     }
 
     try {
-      // Update status to cancelled instead of deleting
+      // Get appointment details before cancelling
+      const appointmentDoc = await getDoc(doc(db, 'appointments', appointmentId));
+      if (!appointmentDoc.exists()) {
+        alert('Appointment not found.');
+        return;
+      }
+
+      const appointment = appointmentDoc.data();
+      const appointmentDate = appointment.appointmentDate?.toDate();
+
+      // Update status to cancelled
       await updateDoc(doc(db, 'appointments', appointmentId), {
         status: 'cancelled',
         cancelledAt: serverTimestamp()
       });
+
+      // Send cancellation emails
+      try {
+        const cancellationDetails = {
+          appointmentId: appointmentId,
+          clientName: appointment.clientName,
+          clientEmail: appointment.clientEmail,
+          clientPhone: appointment.clientPhone || '',
+          appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            timeZone: 'America/Los_Angeles'
+          }),
+          appointmentTime: appointmentDate.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/Los_Angeles'
+          }),
+          appointmentType: appointment.appointmentType === 'virtual' ? 'Virtual Consultation' : 'Phone Consultation',
+          cancelledBy: 'Admin'
+        };
+
+        // Send cancellation confirmation to CLIENT
+        const sendClientCancellation = httpsCallable(functions, 'sendClientCancellationConfirmation');
+        await sendClientCancellation(cancellationDetails);
+
+        // Send cancellation notification to ATTORNEY
+        const sendAttorneyCancellation = httpsCallable(functions, 'sendAttorneyCancellationNotification');
+        await sendAttorneyCancellation(cancellationDetails);
+
+        console.log('✓ Cancellation emails sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send cancellation emails:', emailError);
+        // Don't fail the cancellation if email fails
+      }
       
-      alert('Appointment cancelled successfully.');
+      alert('Appointment cancelled successfully. Confirmation emails have been sent.');
       await loadDashboardData();
       
       // Close the modal if it's open
