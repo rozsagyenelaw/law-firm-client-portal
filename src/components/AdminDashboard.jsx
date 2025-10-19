@@ -165,8 +165,13 @@ const AdminDashboard = () => {
       }));
       setMessages(messagesData);
 
-      // Load ALL appointments for calendar view
-      const allAppointmentsSnapshot = await getDocs(collection(db, 'appointments'));
+      // Load ALL appointments for calendar view - EXCLUDE CANCELLED
+      const allAppointmentsSnapshot = await getDocs(
+        query(
+          collection(db, 'appointments'),
+          where('status', '!=', 'cancelled')
+        )
+      );
       const allAppointmentsData = allAppointmentsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -211,9 +216,17 @@ const AdminDashboard = () => {
     }
 
     try {
-      await deleteDoc(doc(db, 'appointments', appointmentId));
+      // Update status to cancelled instead of deleting
+      await updateDoc(doc(db, 'appointments', appointmentId), {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp()
+      });
+      
       alert('Appointment cancelled successfully.');
       await loadDashboardData();
+      
+      // Close the modal if it's open
+      setSelectedCalendarEvent(null);
     } catch (error) {
       console.error('Error cancelling appointment:', error);
       alert('Failed to cancel appointment. Please try again.');
@@ -1251,7 +1264,6 @@ const AdminDashboard = () => {
                   <button
                     onClick={() => {
                       handleCancelAppointment(selectedCalendarEvent.id);
-                      setSelectedCalendarEvent(null);
                     }}
                     className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
                   >
@@ -1270,9 +1282,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* All existing modals remain the same - New Client, Upload Document, Send Message, View Client, Edit Client */}
-      {/* I'll keep the rest of your modals exactly as they were */}
-      
       {/* New Client Modal */}
       {showNewClientForm && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
