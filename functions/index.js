@@ -104,6 +104,9 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
     console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
     console.log('Appointment ID:', appointmentId);
     
+    // Create cancellation/management URL
+    const manageUrl = `https://portal.livingtrust-attorneys.com/book?manage=${appointmentId}&email=${encodeURIComponent(clientEmail)}`;
+    
     // Client-focused confirmation email
     const clientMailOptions = {
       from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
@@ -129,6 +132,9 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
             .contact-highlight { font-size: 16px; font-weight: bold; color: #1e3a8a; }
             .questionnaire-box { background-color: #f0fdf4; border: 2px solid #10b981; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
             .btn-questionnaire { display: inline-block; background-color: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 10px 0; }
+            .manage-box { background-color: #fee2e2; border: 2px solid #ef4444; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
+            .btn-cancel { display: inline-block; background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 10px 0; }
+            .confirmation-id { background-color: #f3f4f6; padding: 10px 15px; border-radius: 6px; font-family: monospace; font-size: 14px; margin: 10px 0; display: inline-block; border: 2px dashed #9ca3af; }
           </style>
         </head>
         <body>
@@ -198,8 +204,17 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
                 <a href="https://livingtrust-attorneys.com/estate-planning-questionnaire" class="btn-questionnaire">Complete Questionnaire</a>
               </div>
 
-              <p><strong>Need to reschedule or cancel?</strong><br>
-              Please contact us at rozsagyenelaw1@gmail.com at least 24 hours before your appointment.</p>
+              <div class="manage-box">
+                <h3 style="color: #991b1b; margin-top: 0; margin-bottom: 10px;">📅 Need to Reschedule or Cancel?</h3>
+                <p style="color: #7f1d1d; margin: 10px 0;">If you need to make changes to your appointment, you can manage it using the link below:</p>
+                <div class="confirmation-id">
+                  <strong>Your Confirmation ID:</strong><br>
+                  ${appointmentId.substring(0, 8).toUpperCase()}
+                </div>
+                <p style="color: #7f1d1d; margin: 10px 0; font-size: 14px;">Please reschedule or cancel at least 24 hours before your appointment.</p>
+                <a href="${manageUrl}" class="btn-cancel">Manage Appointment</a>
+                <p style="color: #6b7280; margin: 10px 0; font-size: 12px;">You can also contact us at rozsagyenelaw1@gmail.com</p>
+              </div>
 
               <div style="text-align: center;">
                 <a href="https://portal.livingtrust-attorneys.com/book" style="display: inline-block; background-color: #1e3a8a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0; font-weight: 600;">Book Another Appointment</a>
