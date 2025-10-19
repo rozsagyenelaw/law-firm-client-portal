@@ -33,10 +33,9 @@ import StripePayment from './components/StripePayment';
 import AdminDashboard from './components/AdminDashboard';
 import Appointments from './components/Appointments';
 import DocumentSigning from './components/DocumentSigning';
+import DocumentUpload from './components/DocumentUpload';
 import DocuSign from './components/DocuSign';
 import PublicBooking from './components/PublicBooking';
-import ClientDocuments from './components/ClientDocuments';
-import SigningPage from './components/SigningPage';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
