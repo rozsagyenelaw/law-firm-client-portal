@@ -167,16 +167,15 @@ const AdminDashboard = () => {
 
       // Load ALL appointments for calendar view - EXCLUDE CANCELLED
       const allAppointmentsSnapshot = await getDocs(
-        query(
-          collection(db, 'appointments'),
-          where('status', '!=', 'cancelled')
-        )
+        collection(db, 'appointments')
       );
-      const allAppointmentsData = allAppointmentsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        appointmentDate: doc.data().appointmentDate?.toDate()
-      }));
+      const allAppointmentsData = allAppointmentsSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          appointmentDate: doc.data().appointmentDate?.toDate()
+        }))
+        .filter(appt => appt.status !== 'cancelled'); // Filter out cancelled in memory
       setAllAppointments(allAppointmentsData);
 
       // Load confirmed upcoming appointments for stats and list view
