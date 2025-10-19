@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { storage, db } from '../firebase'; // CHANGED: from ../config/firebase
+import { storage, db } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'; // CHANGED: different methods
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { Upload, FileText, Download, Trash2, Eye, PenTool, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import DocumentSigning from './DocumentSigning';
 
@@ -10,8 +10,8 @@ const DocumentUpload = ({ clientId, clientName }) => {
   const [documents, setDocuments] = useState([]);
   const [signingDocument, setSigningDocument] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(''); // ADDED: for error messages
-  const [success, setSuccess] = useState(''); // ADDED: for success messages
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   
   useEffect(() => {
     loadDocuments();
@@ -20,7 +20,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
   const loadDocuments = async () => {
     try {
       setLoading(true);
-      // CHANGED: Query documents collection instead of client record
       const documentsQuery = query(
         collection(db, 'documents'),
         where('clientId', '==', clientId)
@@ -31,7 +30,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
         ...docSnap.data()
       }));
       
-      // Sort by upload date (newest first)
       const sortedDocs = docs.sort((a, b) => {
         const dateA = a.uploadDate?.toDate ? a.uploadDate.toDate() : new Date(a.uploadedAt || 0);
         const dateB = b.uploadDate?.toDate ? b.uploadDate.toDate() : new Date(b.uploadedAt || 0);
@@ -52,14 +50,12 @@ const DocumentUpload = ({ clientId, clientName }) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Check if it's a PDF
     if (file.type !== 'application/pdf') {
       setError('Please upload only PDF files');
       setTimeout(() => setError(''), 5000);
       return;
     }
     
-    // Check file size (limit to 10MB)
     if (file.size > 10 * 1024 * 1024) {
       setError('File size must be less than 10MB');
       setTimeout(() => setError(''), 5000);
@@ -71,27 +67,19 @@ const DocumentUpload = ({ clientId, clientName }) => {
     setSuccess('');
     
     try {
-      // Create a unique filename
       const timestamp = Date.now();
       const fileName = `${clientId}/${timestamp}-${file.name}`;
-      
-      // Create storage reference
       const storageRef = ref(storage, `client-documents/${fileName}`);
-      
-      // Upload file
       const snapshot = await uploadBytes(storageRef, file);
-      
-      // Get download URL
       const downloadURL = await getDownloadURL(snapshot.ref);
       
-      // CHANGED: Create document in documents collection
       const docData = {
         name: file.name,
         url: downloadURL,
         path: fileName,
         size: `${(file.size / 1024).toFixed(2)} KB`,
         uploadDate: serverTimestamp(),
-        uploadedAt: new Date().toISOString(), // Keep for compatibility
+        uploadedAt: new Date().toISOString(),
         type: 'pdf',
         clientId: clientId,
         clientName: clientName,
@@ -101,16 +89,12 @@ const DocumentUpload = ({ clientId, clientName }) => {
         category: 'client_upload'
       };
       
-      // Save to Firestore
       await addDoc(collection(db, 'documents'), docData);
       
       setSuccess('Document uploaded successfully');
       setTimeout(() => setSuccess(''), 5000);
       
-      // Reload documents
       await loadDocuments();
-      
-      // Reset file input
       e.target.value = '';
     } catch (error) {
       console.error('Error uploading document:', error);
@@ -125,17 +109,13 @@ const DocumentUpload = ({ clientId, clientName }) => {
     if (!window.confirm(`Are you sure you want to delete "${document.name}"?`)) return;
     
     try {
-      // Delete from Storage
       const storageRef = ref(storage, `client-documents/${document.path}`);
       await deleteObject(storageRef);
-      
-      // CHANGED: Delete from documents collection
       await deleteDoc(doc(db, 'documents', document.id));
       
       setSuccess('Document deleted successfully');
       setTimeout(() => setSuccess(''), 5000);
       
-      // Reload documents
       await loadDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
@@ -179,7 +159,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-6">
-        {/* Header with Refresh button */}
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-medium text-gray-900">Documents</h3>
           <button
@@ -192,7 +171,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
           </button>
         </div>
         
-        {/* Error message */}
         {error && (
           <div className="mb-4 flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md">
             <AlertCircle size={20} />
@@ -200,7 +178,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
           </div>
         )}
         
-        {/* Success message */}
         {success && (
           <div className="mb-4 flex items-center gap-2 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md">
             <CheckCircle size={20} />
@@ -208,7 +185,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
           </div>
         )}
         
-        {/* Upload area */}
         <div className="mb-6">
           <input
             type="file"
@@ -227,7 +203,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
           </label>
         </div>
         
-        {/* Documents list */}
         <div className="space-y-3">
           {documents.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
@@ -239,7 +214,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
                 key={doc.id}
                 className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-all"
               >
-                {/* Document info */}
                 <div className="flex items-center gap-3 flex-1">
                   <FileText size={20} className="text-blue-600" />
                   <div>
@@ -259,7 +233,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
                   </div>
                 </div>
                 
-                {/* Actions */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleView(doc)}
@@ -298,7 +271,6 @@ const DocumentUpload = ({ clientId, clientName }) => {
         </div>
       </div>
       
-      {/* Document Signing Modal */}
       {signingDocument && (
         <DocumentSigning
           document={signingDocument}
