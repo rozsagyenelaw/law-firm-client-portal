@@ -238,11 +238,52 @@ const PublicBooking = () => {
     }
 
     try {
+      const appointment = appointmentDetails;
+      const appointmentDate = appointment.appointmentDate;
+
       // Update appointment status to cancelled
       await updateDoc(doc(db, 'appointments', appointmentId), {
         status: 'cancelled',
         cancelledAt: serverTimestamp()
       });
+
+      // Send cancellation emails
+      try {
+        const cancellationDetails = {
+          appointmentId: appointmentId,
+          clientName: appointment.clientName,
+          clientEmail: appointment.clientEmail,
+          clientPhone: appointment.clientPhone || '',
+          appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            timeZone: 'America/Los_Angeles'
+          }),
+          appointmentTime: appointmentDate.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/Los_Angeles'
+          }),
+          appointmentType: APPOINTMENT_TYPES.find(t => t.value === appointment.appointmentType)?.label,
+          cancelledBy: 'Guest/Client'
+        };
+
+        // Send cancellation confirmation to CLIENT
+        const sendClientCancellation = httpsCallable(functions, 'sendClientCancellationConfirmation');
+        await sendClientCancellation(cancellationDetails);
+
+        // Send cancellation notification to ATTORNEY
+        const sendAttorneyCancellation = httpsCallable(functions, 'sendAttorneyCancellationNotification');
+        await sendAttorneyCancellation(cancellationDetails);
+
+        console.log('✓ Cancellation emails sent successfully');
+      } catch (emailError) {
+        console.error('Failed to send cancellation emails:', emailError);
+        // Don't fail the cancellation if email fails
+      }
 
       // Remove from found appointments
       setFoundAppointments(prev => prev.filter(appt => appt.id !== appointmentId));
