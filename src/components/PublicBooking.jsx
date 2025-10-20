@@ -18,6 +18,7 @@ const PublicBooking = () => {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false); // NEW: SMS consent checkbox
 
   // Manage appointment fields
   const [lookupEmail, setLookupEmail] = useState('');
@@ -121,6 +122,7 @@ const PublicBooking = () => {
         clientName: guestName,
         clientEmail: guestEmail,
         clientPhone: guestPhone,
+        smsConsent: smsConsent, // Store SMS consent preference
         appointmentDate: appointmentDate,
         appointmentType: appointmentType,
         notes: notes,
@@ -141,7 +143,7 @@ const PublicBooking = () => {
           appointmentId: docRef.id,
           clientName: guestName,
           clientEmail: guestEmail,
-          clientPhone: guestPhone,
+          clientPhone: smsConsent ? guestPhone : '', // Only send phone if SMS consent given
           appointmentDate: appointmentDate.toISOString(),
           appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
             weekday: 'long', 
@@ -182,6 +184,7 @@ const PublicBooking = () => {
       setGuestName('');
       setGuestEmail('');
       setGuestPhone('');
+      setSmsConsent(false);
 
       // Scroll to top to show success message
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -253,7 +256,7 @@ const PublicBooking = () => {
           appointmentId: appointmentId,
           clientName: appointment.clientName,
           clientEmail: appointment.clientEmail,
-          clientPhone: appointment.clientPhone || '',
+          clientPhone: appointment.smsConsent ? (appointment.clientPhone || '') : '', // Only send if they consented to SMS
           appointmentDateFormatted: appointmentDate.toLocaleDateString('en-US', { 
             weekday: 'long', 
             year: 'numeric', 
@@ -415,6 +418,27 @@ const PublicBooking = () => {
                     placeholder="(555) 123-4567"
                     className="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
+                </div>
+
+                {/* SMS CONSENT CHECKBOX - NEW */}
+                <div className="mt-4 bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                  <label className="flex items-start cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={smsConsent}
+                      onChange={(e) => setSmsConsent(e.target.checked)}
+                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="ml-3 text-sm text-gray-700 leading-relaxed">
+                      I agree to receive appointment reminders and notifications via SMS/text message from <strong>Law Offices of Rozsa Gyene</strong>. 
+                      Message frequency: 2-4 messages per appointment (confirmation, reminders, cancellations). 
+                      Message and data rates may apply. 
+                      Reply <strong>STOP</strong> to unsubscribe. Reply <strong>HELP</strong> for help.
+                    </span>
+                  </label>
+                  <p className="text-xs text-gray-600 mt-2 ml-7 italic">
+                    ℹ️ Optional - You can still book your appointment without SMS notifications. You'll always receive email confirmations.
+                  </p>
                 </div>
               </div>
             </div>
