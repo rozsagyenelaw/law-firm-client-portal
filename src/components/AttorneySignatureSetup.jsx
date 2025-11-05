@@ -22,6 +22,10 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
   const [sendViaSMS, setSendViaSMS] = useState(false);
   const [totalPages, setTotalPages] = useState(1);
   const [signatureFields, setSignatureFields] = useState([]);
+  const [useExistingClient, setUseExistingClient] = useState(true);
+  const [manualClientName, setManualClientName] = useState('');
+  const [manualClientEmail, setManualClientEmail] = useState('');
+  const [manualClientPhone, setManualClientPhone] = useState('');
 
   const handleFileSelect = async (e) => {
     const file = e.target.files[0];
@@ -66,9 +70,17 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
   const handleSendRequest = async (e) => {
     e.preventDefault();
 
-    if (!selectedClient) {
-      setError('Please select a client');
-      return;
+    // Validate client selection or manual entry
+    if (useExistingClient) {
+      if (!selectedClient) {
+        setError('Please select a client');
+        return;
+      }
+    } else {
+      if (!manualClientName || !manualClientEmail) {
+        setError('Please enter client name and email');
+        return;
+      }
     }
 
     if (!pdfUrl) {
@@ -85,19 +97,30 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
     setError('');
 
     try {
-      const client = clients.find(c => c.id === selectedClient);
-      if (!client) {
-        throw new Error('Client not found');
-      }
+      let clientName, clientEmail, clientPhone, clientId;
 
-      const clientName = `${client.firstName} ${client.lastName}`;
-      const clientEmail = client.email;
-      const clientPhone = client.phone || '';
+      // Get client data from either existing client or manual entry
+      if (useExistingClient) {
+        const client = clients.find(c => c.id === selectedClient);
+        if (!client) {
+          throw new Error('Client not found');
+        }
+        clientName = `${client.firstName} ${client.lastName}`;
+        clientEmail = client.email;
+        clientPhone = client.phone || '';
+        clientId = selectedClient;
+      } else {
+        // Use manually entered client data
+        clientName = manualClientName;
+        clientEmail = manualClientEmail;
+        clientPhone = manualClientPhone || '';
+        clientId = null; // No client ID for non-registered clients
+      }
 
       const requestData = {
         documentTitle,
         documentUrl: pdfUrl,
-        clientId: selectedClient,
+        clientId: clientId,
         clientName,
         clientEmail,
         clientPhone,
@@ -277,20 +300,82 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
           {step === 3 && (
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Select Client</label>
-                <select
-                  value={selectedClient}
-                  onChange={(e) => setSelectedClient(e.target.value)}
-                  required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Choose a client...</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.firstName} {client.lastName} ({client.email})
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-3">Client Information *</label>
+
+                {/* Toggle between existing and new client */}
+                <div className="flex space-x-4 mb-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      checked={useExistingClient}
+                      onChange={() => setUseExistingClient(true)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Select existing client</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      checked={!useExistingClient}
+                      onChange={() => setUseExistingClient(false)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Enter new client details</span>
+                  </label>
+                </div>
+
+                {/* Existing client dropdown */}
+                {useExistingClient ? (
+                  <select
+                    value={selectedClient}
+                    onChange={(e) => setSelectedClient(e.target.value)}
+                    required
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Choose a client...</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.firstName} {client.lastName} ({client.email})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  /* Manual client entry */
+                  <div className="space-y-3 bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Full Name *</label>
+                      <input
+                        type="text"
+                        value={manualClientName}
+                        onChange={(e) => setManualClientName(e.target.value)}
+                        placeholder="John Doe"
+                        required
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Email Address *</label>
+                      <input
+                        type="email"
+                        value={manualClientEmail}
+                        onChange={(e) => setManualClientEmail(e.target.value)}
+                        placeholder="john@example.com"
+                        required
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600">Phone Number (optional, for SMS)</label>
+                      <input
+                        type="tel"
+                        value={manualClientPhone}
+                        onChange={(e) => setManualClientPhone(e.target.value)}
+                        placeholder="+1 (555) 123-4567"
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -365,7 +450,7 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
           ) : (
             <button
               onClick={handleSendRequest}
-              disabled={sending || !pdfUrl || !selectedClient}
+              disabled={sending || !pdfUrl || (useExistingClient ? !selectedClient : (!manualClientName || !manualClientEmail))}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
             >
               {sending ? (
