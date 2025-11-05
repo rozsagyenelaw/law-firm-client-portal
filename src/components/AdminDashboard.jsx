@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, FileText, MessageSquare, Upload, Search, 
+import {
+  Users, FileText, MessageSquare, Upload, Search,
   Plus, Edit, Trash2, Send, Calendar as CalendarIcon, DollarSign,
   Home, LogOut, Settings, Eye, Download, Shield,
   CheckCircle, AlertCircle, Clock, Menu, X, Folder,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Edit3, ExternalLink, Copy
 } from 'lucide-react';
 import { Calendar as BigCalendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
@@ -37,6 +37,7 @@ import {
 import { auth, db, storage, functions } from '../firebase';
 import { httpsCallable } from 'firebase/functions';
 import emailjs from '@emailjs/browser';
+import AttorneySignatureSetup from './AttorneySignatureSetup';
 
 // Initialize EmailJS
 emailjs.init('tlwGhvG0aPvocwYcO');
@@ -61,18 +62,21 @@ const AdminDashboard = () => {
   const [messages, setMessages] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]); // All appointments for calendar
+  const [signatureRequests, setSignatureRequests] = useState([]);
   const [stats, setStats] = useState({
     totalClients: 0,
     activeMatters: 0,
     totalDocuments: 0,
     unreadMessages: 0,
-    upcomingAppointments: 0
+    upcomingAppointments: 0,
+    pendingSignatures: 0
   });
   
   // Form states
   const [showNewClientForm, setShowNewClientForm] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showSignatureSetup, setShowSignatureSetup] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
   
@@ -200,6 +204,14 @@ const AdminDashboard = () => {
       const upcomingAppointmentsData = appointmentsData.filter(appt => appt.appointmentDate >= now);
       
       setAppointments(upcomingAppointmentsData);
+
+      // Load signature requests
+      const signatureRequestsSnapshot = await getDocs(query(collection(db, 'signatureRequests'), orderBy('createdAt', 'desc')));
+      const signatureRequestsData = signatureRequestsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSignatureRequests(signatureRequestsData);
 
       // Calculate stats
       setStats({
@@ -695,6 +707,7 @@ const AdminDashboard = () => {
                 { id: 'calendar', icon: CalendarIcon, label: 'Calendar' },
                 { id: 'appointments', icon: Clock, label: 'Appointments List' },
                 { id: 'documents', icon: FileText, label: 'Documents' },
+                { id: 'signatures', icon: Edit3, label: 'Signature Requests' },
                 { id: 'messages', icon: MessageSquare, label: 'Messages' },
                 { id: 'matters', icon: Folder, label: 'Matters' },
               ].map((item) => (
@@ -1125,13 +1138,22 @@ const AdminDashboard = () => {
             <div>
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Documents</h2>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  <Upload className="h-5 w-5 mr-2" />
-                  Upload Document
-                </button>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowSignatureSetup(true)}
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    <FileText className="h-5 w-5 mr-2" />
+                    Request Signature
+                  </button>
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                  >
+                    <Upload className="h-5 w-5 mr-2" />
+                    Upload Document
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white shadow rounded-lg">
@@ -1287,6 +1309,119 @@ const AdminDashboard = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Signature Requests Tab */}
+          {activeTab === 'signatures' && (
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Signature Requests</h2>
+                <button
+                  onClick={() => setShowSignatureSetup(true)}
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  New Signature Request
+                </button>
+              </div>
+
+              <div className="bg-white shadow rounded-lg">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Document
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Client
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Sent
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Signed
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {signatureRequests.map((request) => (
+                        <tr key={request.id}>
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">{request.documentTitle}</div>
+                            <div className="text-xs text-gray-500">{request.signatureFields?.length || 0} signature field(s)</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{request.clientName}</div>
+                            <div className="text-xs text-gray-500">{request.clientEmail}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {request.signed ? (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 flex items-center w-fit">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Signed
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 flex items-center w-fit">
+                                <Clock className="h-3 w-3 mr-1" />
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {request.createdAt?.toDate ? request.createdAt.toDate().toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {request.signedAt?.toDate ? request.signedAt.toDate().toLocaleDateString() : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => {
+                                const localhostUrl = `http://localhost:5175/sign/${request.id}`;
+                                navigator.clipboard.writeText(localhostUrl);
+                                alert(`Localhost URL copied!\n\n${localhostUrl}\n\nPaste this in your browser to test signing.`);
+                              }}
+                              className="text-blue-600 hover:text-blue-900 mr-3"
+                              title="Copy localhost test URL"
+                            >
+                              <Copy className="h-4 w-4 inline mr-1" />
+                              Test Link
+                            </button>
+                            <a
+                              href={request.signed && request.signedPdfUrl ? request.signedPdfUrl : request.documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-gray-600 hover:text-gray-900"
+                              title={request.signed && request.signedPdfUrl ? "View signed PDF" : "View original PDF"}
+                            >
+                              <Eye className="h-4 w-4 inline" />
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {signatureRequests.length === 0 && (
+                    <div className="text-center py-12">
+                      <Edit3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">No signature requests yet</p>
+                      <button
+                        onClick={() => setShowSignatureSetup(true)}
+                        className="mt-4 text-blue-600 hover:text-blue-700"
+                      >
+                        Create your first signature request
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1876,6 +2011,18 @@ const AdminDashboard = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Signature Setup Modal */}
+      {showSignatureSetup && (
+        <AttorneySignatureSetup
+          clients={clients}
+          onClose={() => setShowSignatureSetup(false)}
+          onSuccess={() => {
+            setShowSignatureSetup(false);
+            // Optionally refresh data here
+          }}
+        />
       )}
     </div>
   );

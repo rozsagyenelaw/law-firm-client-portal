@@ -36,6 +36,7 @@ import Appointments from './components/Appointments';
 import DocumentSigning from './components/DocumentSigning';
 import DocuSign from './components/DocuSign';
 import PublicBooking from './components/PublicBooking';
+import ClientSignaturePage from './components/ClientSignaturePage';
 import emailjs from '@emailjs/browser';
 
 // Initialize EmailJS with your public key
@@ -81,9 +82,12 @@ const ClientPortal = () => {
   const isAdminRoute = window.location.pathname === '/admin';
 
   // Check if current path is public booking page
-  const isPublicBookingRoute = window.location.pathname === '/book' || 
+  const isPublicBookingRoute = window.location.pathname === '/book' ||
                                window.location.pathname === '/book-appointment' ||
                                window.location.pathname === '/appointments';
+
+  // Check if current path is signature page
+  const isSignatureRoute = window.location.pathname.startsWith('/sign/');
 
   // Listen for auth state changes
   useEffect(() => {
@@ -410,6 +414,11 @@ const ClientPortal = () => {
     await signOut(auth);
     setActiveTab('dashboard');
   };
+
+  // Check for signature route FIRST - accessible without login, bypass auth loading
+  if (isSignatureRoute) {
+    return <ClientSignaturePage />;
+  }
 
   if (loading) {
     return (

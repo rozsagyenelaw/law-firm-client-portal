@@ -1174,3 +1174,274 @@ exports.send1HourReminders = functions.scheduler.onSchedule('every 15 minutes', 
   
   console.log('===== 1-HOUR REMINDER CHECK COMPLETED =====\n');
 });
+
+// ============================================================
+// SIGNATURE REQUEST NOTIFICATION FUNCTION
+// ============================================================
+// Send signature request notification to client (Email + SMS)
+exports.sendSignatureRequestNotification = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+}, async (request) => {
+  const {
+    requestId,
+    clientName,
+    clientEmail,
+    clientPhone,
+    documentTitle,
+    message,
+    sendViaEmail,
+    sendViaSMS
+  } = request.data;
+
+  if (!clientName || !clientEmail || !documentTitle) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Client name, email, and document title are required'
+    );
+  }
+
+  if (!sendViaEmail && !sendViaSMS) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'At least one notification method (email or SMS) must be selected'
+    );
+  }
+
+  try {
+    console.log('===== SIGNATURE REQUEST NOTIFICATION =====');
+    console.log('Request ID:', requestId);
+    console.log('Sending TO:', clientEmail);
+    console.log('Client Name:', clientName);
+    console.log('Client Phone:', clientPhone || 'NOT PROVIDED');
+    console.log('Document:', documentTitle);
+    console.log('Send via Email:', sendViaEmail);
+    console.log('Send via SMS:', sendViaSMS);
+
+    const results = {
+      email: { attempted: sendViaEmail, success: false, error: null },
+      sms: { attempted: sendViaSMS, success: false, error: null }
+    };
+
+    // Send email notification
+    if (sendViaEmail) {
+      try {
+        const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
+
+        const emailContent = {
+          from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+          to: clientEmail,
+          subject: `Signature Requested: ${documentTitle}`,
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+                .document-box { background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #1e3a8a; }
+                .btn-sign { display: inline-block; background-color: #1e3a8a; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin: 20px 0; }
+                .message-box { background-color: #eff6ff; border: 2px solid #3b82f6; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                .footer { text-align: center; padding: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1 style="margin: 0;">✍️ Signature Requested</h1>
+                </div>
+                <div class="content">
+                  <h2 style="color: #1e3a8a;">Dear ${clientName},</h2>
+                  <p>You have been requested to review and sign the following document:</p>
+
+                  <div class="document-box">
+                    <h3 style="color: #1e3a8a; margin-top: 0;">📄 ${documentTitle}</h3>
+                  </div>
+
+                  ${message ? `
+                  <div class="message-box">
+                    <h4 style="color: #1e40af; margin-top: 0;">Message from Attorney:</h4>
+                    <p style="color: #1e40af; margin: 0;">${message}</p>
+                  </div>
+                  ` : ''}
+
+                  <div style="text-align: center;">
+                    <a href="${signatureUrl}" class="btn-sign" style="color: #ffffff !important; text-decoration: none;">📝 Review & Sign Document</a>
+                  </div>
+
+                  <p style="margin-top: 30px; color: #6b7280; font-size: 14px;">
+                    Please click the button above to review the document and add your signature. If you have any questions, please contact our office.
+                  </p>
+                </div>
+                <div class="footer">
+                  <p style="margin: 5px 0;"><strong>Law Offices of Rozsa Gyene</strong></p>
+                  <p style="margin: 5px 0;">Estate Planning & Probate Attorney</p>
+                  <p style="margin: 5px 0;">📧 rozsagyenelaw1@gmail.com</p>
+                  <p style="margin: 5px 0;">🌐 <a href="https://portal.livingtrust-attorneys.com" style="color: #1e3a8a;">Client Portal</a></p>
+                  <p style="margin-top: 15px; color: #9ca3af;">© ${new Date().getFullYear()} Law Offices of Rozsa Gyene. All rights reserved.</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `
+        };
+
+        await gmailTransporter.sendMail(emailContent);
+        console.log('✓ EMAIL notification sent successfully');
+        results.email.success = true;
+      } catch (emailError) {
+        console.error('✗ Email notification failed:', emailError);
+        results.email.error = emailError.message;
+      }
+    }
+
+    // Send SMS notification
+    if (sendViaSMS && clientPhone && clientPhone.trim() !== '') {
+      try {
+        const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
+        const smsMessage = `Law Offices of Rozsa Gyene: You have a document to sign - "${documentTitle}". Visit ${signatureUrl} to review and sign. Reply STOP to opt out.`;
+
+        const smsResult = await sendSMS(clientPhone, smsMessage);
+        if (smsResult.success) {
+          console.log('✓ SMS notification sent successfully');
+          results.sms.success = true;
+        } else {
+          console.error('✗ SMS notification failed:', smsResult.error);
+          results.sms.error = smsResult.error;
+        }
+      } catch (smsError) {
+        console.error('✗ SMS notification failed:', smsError);
+        results.sms.error = smsError.message;
+      }
+    } else if (sendViaSMS && (!clientPhone || clientPhone.trim() === '')) {
+      console.log('⚠ SMS requested but no phone number provided');
+      results.sms.error = 'No phone number provided';
+    }
+
+    // Check if at least one notification succeeded
+    const anySuccess = (sendViaEmail && results.email.success) || (sendViaSMS && results.sms.success);
+
+    if (!anySuccess) {
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to send any notifications',
+        results
+      );
+    }
+
+    console.log('✓ Signature request notification completed');
+    console.log('Results:', JSON.stringify(results, null, 2));
+
+    return {
+      success: true,
+      message: 'Signature request notification sent',
+      results: results
+    };
+
+  } catch (error) {
+    console.error('Error sending signature request notification:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send signature request notification: ' + error.message);
+  }
+});
+
+// ============================================================
+// Generate Signed PDF with embedded signatures
+// ============================================================
+exports.generateSignedPdf = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+}, async (request) => {
+  const { PDFDocument } = require('pdf-lib');
+  const axios = require('axios');
+
+  const {
+    originalPdfUrl,
+    signatures,
+    signatureFields,
+    requestId
+  } = request.data;
+
+  if (!originalPdfUrl || !signatures || !signatureFields || !requestId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing required parameters'
+    );
+  }
+
+  try {
+    console.log('===== GENERATING SIGNED PDF =====');
+    console.log('Request ID:', requestId);
+    console.log('Original PDF:', originalPdfUrl);
+    console.log('Signatures count:', signatures.length);
+
+    // Download the original PDF
+    const pdfResponse = await axios.get(originalPdfUrl, {
+      responseType: 'arraybuffer'
+    });
+
+    // Load the PDF
+    const pdfDoc = await PDFDocument.load(pdfResponse.data);
+    const pages = pdfDoc.getPages();
+
+    // Embed each signature
+    for (let i = 0; i < signatures.length; i++) {
+      const signatureData = signatures[i];
+      const field = signatureFields[i];
+
+      if (!signatureData || !field) continue;
+
+      console.log(`Embedding signature ${i + 1} on page ${field.page}`);
+
+      // Convert base64 to PNG image
+      const imageBytes = Buffer.from(signatureData.split(',')[1], 'base64');
+      const signatureImage = await pdfDoc.embedPng(imageBytes);
+
+      const page = pages[field.page - 1]; // Pages are 0-indexed
+      const { width, height } = page.getSize();
+
+      // Calculate position (field.x and field.y are percentages)
+      const x = (field.x / 100) * width - 75; // Center the 150px wide signature
+      const y = height - ((field.y / 100) * height) - 25; // Flip Y axis and center 50px high signature
+
+      // Draw the signature on the page
+      page.drawImage(signatureImage, {
+        x: x,
+        y: y,
+        width: 150,
+        height: 50,
+      });
+    }
+
+    // Save the modified PDF
+    const pdfBytes = await pdfDoc.save();
+
+    // Upload to Firebase Storage
+    const bucket = admin.storage().bucket();
+    const fileName = `signed-documents/${requestId}/signed-${Date.now()}.pdf`;
+    const file = bucket.file(fileName);
+
+    await file.save(Buffer.from(pdfBytes), {
+      metadata: {
+        contentType: 'application/pdf',
+      },
+    });
+
+    // Make the file publicly accessible
+    await file.makePublic();
+
+    // Get the public URL
+    const signedPdfUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+    console.log('✓ Signed PDF generated successfully');
+    console.log('Signed PDF URL:', signedPdfUrl);
+
+    return {
+      success: true,
+      signedPdfUrl: signedPdfUrl
+    };
+
+  } catch (error) {
+    console.error('Error generating signed PDF:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to generate signed PDF: ' + error.message);
+  }
+});
