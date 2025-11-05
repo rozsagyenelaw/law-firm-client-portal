@@ -110,7 +110,7 @@ async function sendSMS(phoneNumber, message) {
 
 // Send appointment confirmation email to CLIENT (PUBLIC - allows guest bookings)
 exports.sendClientAppointmentConfirmation = functions.https.onCall({
-  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174']
 }, async (request) => {
   // REMOVED authentication check to allow guest bookings
   // Validate required fields instead
@@ -317,7 +317,7 @@ exports.sendClientAppointmentConfirmation = functions.https.onCall({
 
 // Send appointment notification email to ATTORNEY (PUBLIC - allows guest bookings)
 exports.sendAttorneyAppointmentNotification = functions.https.onCall({
-  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174']
 }, async (request) => {
   // REMOVED authentication check to allow guest bookings
   // Validate required fields instead
@@ -504,7 +504,24 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
     console.log(`  --> Client: ${clientName} (${clientEmail})`);
     console.log(`  --> Client Phone: ${clientPhone || 'NOT PROVIDED'}`);
     console.log(`  --> Appointment ID: ${appointmentId}`);
-    
+
+    // Send SMS notification to attorney
+    const attorneyPhone = '8184344541';
+    try {
+      console.log('Attempting to send SMS to attorney...');
+      const smsMessage = `New appointment: ${clientName} on ${appointmentDateFormatted} at ${appointmentTime}. Client: ${clientEmail}${clientPhone ? ` | ${clientPhone}` : ''}`;
+
+      const smsResult = await sendSMS(attorneyPhone, smsMessage);
+      if (smsResult.success) {
+        console.log('✓ SMS notification sent to attorney successfully');
+      } else {
+        console.error('SMS notification to attorney failed:', smsResult.error);
+      }
+    } catch (smsError) {
+      console.error('Error sending SMS to attorney:', smsError);
+      // Don't fail the whole function if SMS fails
+    }
+
     return { success: true, message: 'Attorney notification email sent successfully' };
 
   } catch (error) {
@@ -516,7 +533,7 @@ exports.sendAttorneyAppointmentNotification = functions.https.onCall({
 
 // Send cancellation confirmation email to CLIENT
 exports.sendClientCancellationConfirmation = functions.https.onCall({
-  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174']
 }, async (request) => {
   const { clientName, clientEmail, clientPhone, appointmentId, appointmentDateFormatted, appointmentTime, appointmentType } = request.data;
   
@@ -641,7 +658,7 @@ exports.sendClientCancellationConfirmation = functions.https.onCall({
 
 // Send cancellation notification email to ATTORNEY
 exports.sendAttorneyCancellationNotification = functions.https.onCall({
-  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174']
 }, async (request) => {
   const { clientName, clientEmail, clientPhone, appointmentId, appointmentDateFormatted, appointmentTime, appointmentType, cancelledBy } = request.data;
   
@@ -766,7 +783,7 @@ exports.sendAttorneyCancellationNotification = functions.https.onCall({
 
 // Send message notification to client (Email + SMS) - NEW FUNCTION
 exports.sendMessageNotification = functions.https.onCall({
-  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173']
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174']
 }, async (request) => {
   const { 
     clientName, 
