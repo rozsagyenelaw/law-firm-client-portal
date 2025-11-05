@@ -4,7 +4,7 @@ import {
   Plus, Edit, Trash2, Send, Calendar as CalendarIcon, DollarSign,
   Home, LogOut, Settings, Eye, Download, Shield,
   CheckCircle, AlertCircle, Clock, Menu, X, Folder,
-  ChevronLeft, ChevronRight, Edit3, ExternalLink, Copy
+  ChevronLeft, ChevronRight, Edit3, ExternalLink, Copy, Trash
 } from 'lucide-react';
 import { Calendar as BigCalendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
@@ -223,6 +223,30 @@ const AdminDashboard = () => {
       });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const handleDeleteSignatureRequest = async (requestId) => {
+    if (!window.confirm('Are you sure you want to delete this signature request? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'signatureRequests', requestId));
+
+      // Reload the signature requests list
+      const signatureRequestsSnapshot = await getDocs(query(collection(db, 'signatureRequests'), orderBy('createdAt', 'desc')));
+      const signatureRequestsData = signatureRequestsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setSignatureRequests(signatureRequestsData);
+
+      alert('Signature request deleted successfully.');
+    } catch (error) {
+      console.error('Error deleting signature request:', error);
+      alert('Failed to delete signature request: ' + error.message);
     }
   };
 
@@ -1400,11 +1424,18 @@ const AdminDashboard = () => {
                               href={request.signed && request.signedPdfUrl ? request.signedPdfUrl : request.documentUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-gray-600 hover:text-gray-900"
+                              className="text-gray-600 hover:text-gray-900 mr-3"
                               title={request.signed && request.signedPdfUrl ? "View signed PDF" : "View original PDF"}
                             >
                               <Eye className="h-4 w-4 inline" />
                             </a>
+                            <button
+                              onClick={() => handleDeleteSignatureRequest(request.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Delete signature request"
+                            >
+                              <Trash className="h-4 w-4 inline" />
+                            </button>
                           </td>
                         </tr>
                       ))}
