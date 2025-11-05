@@ -1,15 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, FileText, Download, Upload, MessageSquare, User, LogOut, Folder, Home, Shield, Clock, DollarSign, AlertCircle, CheckCircle, Menu, X, Calendar, CreditCard, Settings, Lock, Save, Send, PenTool, Edit3 } from 'lucide-react';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential
 } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { 
   doc, 
   setDoc, 
@@ -74,6 +75,13 @@ const ClientPortal = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwordChangeMessage, setPasswordChangeMessage] = useState('');
   const [passwordChangeError, setPasswordChangeError] = useState('');
+
+  // Forgot password states
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
+  const [sendingResetEmail, setSendingResetEmail] = useState(false);
 
   // Admin emails that have access to admin dashboard
   const ADMIN_EMAILS = ['rozsagyenelaw@yahoo.com'];
@@ -415,6 +423,38 @@ const ClientPortal = () => {
     setActiveTab('dashboard');
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotPasswordError('');
+    setForgotPasswordMessage('');
+    setSendingResetEmail(true);
+
+    try {
+      const functions = getFunctions();
+      const sendPasswordResetEmail = httpsCallable(functions, 'sendPasswordResetEmail');
+      await sendPasswordResetEmail({ email: forgotPasswordEmail });
+
+      setForgotPasswordMessage('Password reset link sent! Check your email inbox (and spam folder).');
+      setForgotPasswordEmail('');
+
+      // Close modal after 3 seconds
+      setTimeout(() => {
+        setShowForgotPassword(false);
+        setForgotPasswordMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Password reset error:', error);
+      const errorCode = error.code || error.message;
+      if (errorCode.includes('not-found') || errorCode.includes('user-not-found')) {
+        setForgotPasswordError('No account found with this email address.');
+      } else {
+        setForgotPasswordError('Failed to send reset link. Please try again.');
+      }
+    } finally {
+      setSendingResetEmail(false);
+    }
+  };
+
   // Check for signature route FIRST - accessible without login, bypass auth loading
   if (isSignatureRoute) {
     return <ClientSignaturePage />;
@@ -512,9 +552,13 @@ const ClientPortal = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <a href="#" className="text-sm text-blue-600 hover:text-blue-500">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-sm text-blue-600 hover:text-blue-500"
+                  >
                     Forgot your password?
-                  </a>
+                  </button>
                 </div>
 
                 <button
@@ -640,6 +684,82 @@ const ClientPortal = () => {
               </div>
             )}
           </div>
+
+          {/* Forgot Password Modal */}
+          {showForgotPassword && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg max-w-md w-full p-6 relative">
+                <button
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotPasswordError('');
+                    setForgotPasswordMessage('');
+                    setForgotPasswordEmail('');
+                  }}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h2>
+                <p className="text-sm text-gray-600 mb-6">
+                  Enter your email address and we'll send you a link to reset your password.
+                </p>
+
+                {forgotPasswordError && (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+                    {forgotPasswordError}
+                  </div>
+                )}
+
+                {forgotPasswordMessage && (
+                  <div className="mb-4 bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded">
+                    {forgotPasswordMessage}
+                  </div>
+                )}
+
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={forgotPasswordEmail}
+                      onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="your@email.com"
+                      disabled={sendingResetEmail}
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setForgotPasswordError('');
+                        setForgotPasswordMessage('');
+                        setForgotPasswordEmail('');
+                      }}
+                      className="flex-1 py-2 px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      disabled={sendingResetEmail}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={sendingResetEmail}
+                    >
+                      {sendingResetEmail ? 'Sending...' : 'Send Reset Link'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

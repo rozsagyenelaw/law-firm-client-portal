@@ -1346,6 +1346,188 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
 });
 
 // ============================================================
+// Send custom password reset email
+// ============================================================
+exports.sendPasswordResetEmail = functions.https.onCall({
+  cors: ['https://portal.livingtrust-attorneys.com', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+}, async (request) => {
+  const { email } = request.data;
+
+  if (!email) {
+    throw new functions.https.HttpsError('invalid-argument', 'Email is required');
+  }
+
+  try {
+    // Generate password reset link using Firebase Admin
+    const resetLink = await admin.auth().generatePasswordResetLink(email, {
+      url: 'https://portal.livingtrust-attorneys.com', // Redirect URL after reset
+      handleCodeInApp: false
+    });
+
+    // Send custom branded email
+    const mailOptions = {
+      from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
+      to: email,
+      subject: 'Reset Your Password - Law Offices of Rozsa Gyene',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              line-height: 1.6;
+              color: #333;
+              background-color: #f5f7fa;
+              margin: 0;
+              padding: 0;
+            }
+            .email-container {
+              max-width: 600px;
+              margin: 40px auto;
+              background: white;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0,0,0,0.07);
+            }
+            .header {
+              background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+              color: white;
+              padding: 30px 20px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 24px;
+              font-weight: 600;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .content h2 {
+              color: #1a202c;
+              font-size: 20px;
+              margin: 0 0 20px 0;
+            }
+            .content p {
+              margin: 0 0 20px 0;
+              color: #4a5568;
+            }
+            .button-container {
+              text-align: center;
+              margin: 30px 0;
+            }
+            .reset-button {
+              display: inline-block;
+              padding: 14px 32px;
+              background: #1e3a8a;
+              color: white !important;
+              text-decoration: none;
+              border-radius: 8px;
+              font-weight: 600;
+              font-size: 16px;
+            }
+            .reset-button:hover {
+              background: #1e40af;
+            }
+            .alternative-link {
+              background: #f3f4f6;
+              padding: 15px;
+              border-radius: 8px;
+              margin: 20px 0;
+              word-break: break-all;
+            }
+            .alternative-link p {
+              margin: 0 0 10px 0;
+              font-size: 14px;
+              color: #6b7280;
+            }
+            .alternative-link a {
+              color: #1e3a8a;
+              font-size: 13px;
+            }
+            .footer {
+              background: #f9fafb;
+              padding: 20px 30px;
+              text-align: center;
+              border-top: 1px solid #e5e7eb;
+            }
+            .footer p {
+              margin: 5px 0;
+              font-size: 13px;
+              color: #6b7280;
+            }
+            .security-note {
+              background: #fef3c7;
+              border-left: 4px solid #f59e0b;
+              padding: 15px;
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+            .security-note p {
+              margin: 0;
+              font-size: 14px;
+              color: #78350f;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="header">
+              <h1>Law Offices of Rozsa Gyene</h1>
+            </div>
+            <div class="content">
+              <h2>Reset Your Password</h2>
+              <p>Hello,</p>
+              <p>We received a request to reset your password for your Client Portal account. Click the button below to create a new password:</p>
+
+              <div class="button-container">
+                <a href="${resetLink}" class="reset-button">Reset Password</a>
+              </div>
+
+              <div class="alternative-link">
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <a href="${resetLink}">${resetLink}</a>
+              </div>
+
+              <div class="security-note">
+                <p><strong>Security Notice:</strong> This password reset link will expire in 1 hour. If you didn't request this password reset, please ignore this email or contact us if you have concerns about your account security.</p>
+              </div>
+
+              <p>Need help? Contact us at rozsagyenelaw1@gmail.com</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} Law Offices of Rozsa Gyene. All rights reserved.</p>
+              <p>This email was sent because you requested a password reset.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await gmailTransporter.sendMail(mailOptions);
+
+    return {
+      success: true,
+      message: 'Password reset email sent successfully'
+    };
+
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+
+    // Handle specific Firebase Auth errors
+    if (error.code === 'auth/user-not-found') {
+      throw new functions.https.HttpsError('not-found', 'No user found with this email address');
+    }
+
+    throw new functions.https.HttpsError('internal', 'Failed to send password reset email: ' + error.message);
+  }
+});
+
+// ============================================================
 // Generate Signed PDF with embedded signatures
 // ============================================================
 exports.generateSignedPdf = functions.https.onCall({
