@@ -8,14 +8,20 @@ service firebase.storage {
              request.auth.token.email == 'rozsagyenelaw@yahoo.com';
     }
 
-    // Documents folder - allow public read for signature requests
-    // This allows clients to view PDFs via signature links
+    // Signature requests folder - for PDFs that need signatures
+    // Allow public read so clients can view documents via signature links
+    match /signature-requests/{allPaths=**} {
+      allow read: if true;  // Public read access for clients
+      allow write: if request.auth != null && isAdmin();  // Only admin can upload
+    }
+
+    // Documents folder - general documents
     match /documents/{allPaths=**} {
       allow read: if true;  // Public read access
       allow write: if request.auth != null && isAdmin();  // Only admin can upload
     }
 
-    // Signed documents folder
+    // Signed documents folder - for completed signatures
     match /signed-documents/{allPaths=**} {
       allow read: if true;  // Public read access
       allow write: if request.auth != null;  // Authenticated users (for cloud function)
