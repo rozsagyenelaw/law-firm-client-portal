@@ -248,6 +248,44 @@ const ClientSignaturePage = () => {
     }
   };
 
+  // Touch event handlers for mobile devices
+  const startDrawingTouch = (e) => {
+    e.preventDefault(); // Prevent scrolling
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const drawTouch = (e) => {
+    if (!isDrawing) return;
+    e.preventDefault(); // Prevent scrolling
+
+    const touch = e.touches[0];
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawingTouch = (e) => {
+    e.preventDefault();
+    stopDrawing();
+  };
+
   const clearSignature = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -508,6 +546,9 @@ const ClientSignaturePage = () => {
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
                 onMouseLeave={stopDrawing}
+                onTouchStart={startDrawingTouch}
+                onTouchMove={drawTouch}
+                onTouchEnd={stopDrawingTouch}
                 className="w-full cursor-crosshair"
                 style={{ touchAction: 'none' }}
               />
