@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.email == 'rozsagyenelaw@yahoo.com';
+    }
+
+    // Documents folder - allow public read for signature requests
+    // This allows clients to view PDFs via signature links
+    match /documents/{allPaths=**} {
+      allow read: if true;  // Public read access
+      allow write: if request.auth != null && isAdmin();  // Only admin can upload
+    }
+
+    // Signed documents folder
+    match /signed-documents/{allPaths=**} {
+      allow read: if true;  // Public read access
+      allow write: if request.auth != null;  // Authenticated users (for cloud function)
+    }
+
+    // Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
