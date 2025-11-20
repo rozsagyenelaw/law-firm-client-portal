@@ -1306,9 +1306,10 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
       try {
         console.log('Attempting to send SMS notification...');
         const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
-        const smsMessage = `Law Offices of Rozsa Gyene: You have a document to sign - "${documentTitle}". Visit ${signatureUrl} to review and sign. Reply STOP to opt out.`;
+        const smsMessage = `Rozsa Gyene Law: Document ready to sign. Visit ${signatureUrl} Reply STOP to opt out.`;
 
         console.log('Sending SMS to:', clientPhone);
+        console.log('SMS message length:', smsMessage.length);
         const smsResult = await sendSMS(clientPhone, smsMessage);
         if (smsResult.success) {
           console.log('✓ SMS notification sent successfully');
