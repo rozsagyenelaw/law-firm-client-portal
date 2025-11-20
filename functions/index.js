@@ -1225,7 +1225,9 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
     // Send email notification
     if (sendViaEmail) {
       try {
+        console.log('Attempting to send email notification...');
         const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
+        console.log('Signature URL:', signatureUrl);
 
         const emailContent = {
           from: '"Law Offices of Rozsa Gyene" <rozsagyenelaw1@gmail.com>',
@@ -1287,11 +1289,14 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
           `
         };
 
+        console.log('Sending email to:', clientEmail);
         await gmailTransporter.sendMail(emailContent);
         console.log('✓ EMAIL notification sent successfully');
         results.email.success = true;
       } catch (emailError) {
         console.error('✗ Email notification failed:', emailError);
+        console.error('Email error stack:', emailError.stack);
+        console.error('Email error code:', emailError.code);
         results.email.error = emailError.message;
       }
     }
@@ -1299,19 +1304,23 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
     // Send SMS notification
     if (sendViaSMS && clientPhone && clientPhone.trim() !== '') {
       try {
+        console.log('Attempting to send SMS notification...');
         const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
         const smsMessage = `Law Offices of Rozsa Gyene: You have a document to sign - "${documentTitle}". Visit ${signatureUrl} to review and sign. Reply STOP to opt out.`;
 
+        console.log('Sending SMS to:', clientPhone);
         const smsResult = await sendSMS(clientPhone, smsMessage);
         if (smsResult.success) {
           console.log('✓ SMS notification sent successfully');
           results.sms.success = true;
         } else {
           console.error('✗ SMS notification failed:', smsResult.error);
+          console.error('SMS error details:', smsResult.details);
           results.sms.error = smsResult.error;
         }
       } catch (smsError) {
         console.error('✗ SMS notification failed:', smsError);
+        console.error('SMS error stack:', smsError.stack);
         results.sms.error = smsError.message;
       }
     } else if (sendViaSMS && (!clientPhone || clientPhone.trim() === '')) {
@@ -1322,10 +1331,22 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
     // Check if at least one notification succeeded
     const anySuccess = (sendViaEmail && results.email.success) || (sendViaSMS && results.sms.success);
 
+    console.log('=== NOTIFICATION RESULTS ===');
+    console.log('Send via email:', sendViaEmail, '| Success:', results.email.success, '| Error:', results.email.error);
+    console.log('Send via SMS:', sendViaSMS, '| Success:', results.sms.success, '| Error:', results.sms.error);
+    console.log('Any success:', anySuccess);
+
     if (!anySuccess) {
+      const errorMessage = `Failed to send signature request notification: ${
+        sendViaEmail && results.email.error ? `Email: ${results.email.error}` : ''
+      }${sendViaEmail && sendViaSMS && results.email.error && results.sms.error ? ', ' : ''}${
+        sendViaSMS && results.sms.error ? `SMS: ${results.sms.error}` : ''
+      }`.trim();
+
+      console.error('THROWING ERROR:', errorMessage);
       throw new functions.https.HttpsError(
         'internal',
-        'Failed to send any notifications',
+        errorMessage,
         results
       );
     }

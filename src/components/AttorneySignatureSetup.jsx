@@ -137,7 +137,7 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
 
       try {
         const sendSignatureRequest = httpsCallable(functions, 'sendSignatureRequestNotification');
-        await sendSignatureRequest({
+        const result = await sendSignatureRequest({
           requestId: docRef.id,
           clientName,
           clientEmail,
@@ -147,8 +147,14 @@ const AttorneySignatureSetup = ({ clients, onClose, onSuccess }) => {
           sendViaEmail,
           sendViaSMS
         });
+
+        console.log('Notification result:', result.data);
       } catch (notificationError) {
         console.error('Notification error:', notificationError);
+        console.error('Error details:', notificationError.details);
+
+        // Show the actual error to the user
+        throw new Error(`Failed to send signature request notification: ${notificationError.message}`);
       }
 
       if (onSuccess) {
