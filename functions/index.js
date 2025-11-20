@@ -1305,8 +1305,7 @@ exports.sendSignatureRequestNotification = functions.https.onCall({
     if (sendViaSMS && clientPhone && clientPhone.trim() !== '') {
       try {
         console.log('Attempting to send SMS notification...');
-        const signatureUrl = `https://portal.livingtrust-attorneys.com/sign/${requestId}`;
-        const smsMessage = `Rozsa Gyene Law: Document ready to sign. Visit ${signatureUrl} Reply STOP to opt out.`;
+        const smsMessage = `Rozsa Gyene Law: Document ready to sign. Check your email for the secure link. Reply STOP to opt out.`;
 
         console.log('Sending SMS to:', clientPhone);
         console.log('SMS message length:', smsMessage.length);
